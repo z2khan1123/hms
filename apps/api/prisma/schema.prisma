@@ -1,0 +1,183 @@
+// HMS data model. Entity/field names track HL7 FHIR R4 where an analogue exists.
+// Multi-tenancy: every tenant-scoped row carries `tenantId`. Postgres Row-Level
+// Security is added in a separate raw-SQL migration (Prisma does not model RLS) —
+// see docs/architecture.md#multi-tenancy.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  platform_admin
+  hospital_admin
+  front_desk
+  practitioner
+  read_only
+}
+
+enum Gender {
+  male
+  female
+  other
+  unknown
+}
+
+enum PatientStatus {
+  active
+  inactive
+  deceased
+}
+
+enum AppointmentStatus {
+  booked
+  arrived
+  fulfilled
+  cancelled
+  noshow
+}
+
+enum AuditOutcome {
+  success
+  failure
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  mrnPrefix String   @default("MRN")
+  mrnSeq    Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  patients      Patient[]
+  practitioners Practitioner[]
+  appointments  Appointment[]
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String?   @db.Uuid
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id])
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role      @default(read_only)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  practitioner  Practitioner?
+
+  @@unique([tenantId, email])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Patient {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @db.Uuid
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  mrn             String
+  firstName       String
+  lastName        String
+  gender          Gender
+  birthDate       DateTime      @db.Date
+  phone           String
+  email           String?
+  // CNIC is never stored in plaintext — salted hash for matching + last 4 for display.
+  nationalIdHash  String?
+  nationalIdLast4 String?
+  address         Json?
+  bloodType       String?
+  status          PatientStatus @default(active)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  appointments Appointment[]
+
+  @@unique([tenantId, mrn])
+  @@index([tenantId, lastName, firstName])
+  @@index([tenantId, phone])
+}
+
+model Practitioner {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  userId    String?  @unique @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id])
+  firstName String
+  lastName  String
+  specialty String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@index([tenantId, lastName, firstName])
+}
+
+model Appointment {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @db.Uuid
+  tenant         Tenant            @relation(fields: [tenantId], references: [id])
+  patientId      String            @db.Uuid
+  patient        Patient           @relation(fields: [patientId], references: [id])
+  practitionerId String            @db.Uuid
+  practitioner   Practitioner      @relation(fields: [practitionerId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime
+  status         AppointmentStatus @default(booked)
+  reason         String?
+  notes          String?
+  createdById    String?           @db.Uuid
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([tenantId, practitionerId, startsAt])
+  @@index([tenantId, patientId, startsAt])
+}
+
+// Append-only. A migration REVOKEs UPDATE/DELETE for the app DB role.
+model AuditEvent {
+  id         String       @id @default(uuid()) @db.Uuid
+  tenantId   String?      @db.Uuid
+  actorId    String?      @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  method     String
+  path       String
+  ip         String?
+  userAgent  String?
+  outcome    AuditOutcome
+  metadata   Json?
+  createdAt  DateTime     @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+}

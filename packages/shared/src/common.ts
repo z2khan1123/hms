@@ -1,0 +1,43 @@
+import { z } from 'zod';
+
+export const uuidSchema = z.string().uuid();
+
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+
+export function paginatedSchema<T extends z.ZodTypeAny>(item: T) {
+  return z.object({
+    data: z.array(item),
+    page: z.number().int(),
+    pageSize: z.number().int(),
+    total: z.number().int(),
+    totalPages: z.number().int(),
+  });
+}
+
+export type Paginated<T> = {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+/** E.164, biased to Pakistan (+92) but accepts any valid international number. */
+export const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+[1-9]\d{6,14}$/, 'Phone must be in E.164 format, e.g. +923001234567');
+
+export const addressSchema = z.object({
+  line1: z.string().trim().min(1).max(200),
+  line2: z.string().trim().max(200).optional(),
+  city: z.string().trim().min(1).max(100),
+  province: z.string().trim().max(100).optional(),
+  postalCode: z.string().trim().max(20).optional(),
+  country: z.string().trim().length(2).default('PK'),
+});
+export type Address = z.infer<typeof addressSchema>;
