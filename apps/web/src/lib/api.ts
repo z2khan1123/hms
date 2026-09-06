@@ -2,6 +2,8 @@ import axios, { type InternalAxiosRequestConfig } from 'axios';
 
 const ACCESS_KEY = 'hms.accessToken';
 const REFRESH_KEY = 'hms.refreshToken';
+/** Shared with the auth context so a session is cleared from exactly one place. */
+export const SESSION_USER_KEY = 'hms.user';
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 function safeGet(key: string): string | null {
@@ -37,6 +39,16 @@ export const tokenStore = {
   },
 };
 
+/** Drop every trace of the signed-in session from this browser. */
+export function clearSession(): void {
+  tokenStore.clear();
+  try {
+    localStorage.removeItem(SESSION_USER_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export const api = axios.create({ baseURL: BASE_URL });
 
 api.interceptors.request.use((config) => {
@@ -45,21 +57,43 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * A page fires many queries at once, so an expired access token produces many
+ * simultaneous 401s. They must share ONE refresh attempt: the promise is reset
+ * in a `finally` on the promise itself, so it survives until that attempt has
+ * actually settled rather than being cleared by whichever caller resumes first.
+ */
 let refreshing: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refresh = tokenStore.refresh;
-  if (!refresh) return null;
-  try {
-    const { data } = await axios.post<{
-      accessToken: string;
-      refreshToken: string;
-    }>(`${BASE_URL}/auth/refresh`, { refreshToken: refresh });
-    tokenStore.set(data.accessToken, data.refreshToken);
-    return data.accessToken;
-  } catch {
-    tokenStore.clear();
-    return null;
+function refreshAccessToken(): Promise<string | null> {
+  refreshing ??= (async () => {
+    const refresh = tokenStore.refresh;
+    if (!refresh) return null;
+    try {
+      const { data } = await axios.post<{
+        accessToken: string;
+        refreshToken: string;
+      }>(`${BASE_URL}/auth/refresh`, { refreshToken: refresh });
+      tokenStore.set(data.accessToken, data.refreshToken);
+      return data.accessToken;
+    } catch {
+      return null;
+    }
+  })().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+/** Guards against every in-flight request racing to redirect. */
+let signingOut = false;
+
+function endSession(): void {
+  if (signingOut) return;
+  signingOut = true;
+  clearSession();
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login');
   }
 }
 
@@ -69,19 +103,19 @@ api.interceptors.response.use(
     const original = error?.config as
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined;
+    const status = error?.response?.status;
 
-    if (error?.response?.status === 401 && original && !original._retry) {
+    // Never try to refresh using the refresh call itself — that recurses.
+    const isRefreshCall = original?.url?.includes('/auth/refresh');
+
+    if (status === 401 && original && !original._retry && !isRefreshCall) {
       original._retry = true;
-      refreshing ??= refreshAccessToken();
-      const token = await refreshing;
-      refreshing = null;
+      const token = await refreshAccessToken();
       if (token) {
         original.headers.Authorization = `Bearer ${token}`;
         return api(original);
       }
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login');
-      }
+      endSession();
     }
     return Promise.reject(error);
   },

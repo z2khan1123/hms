@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '../lib/api';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../lib/auth-context';
 
 type Mode = 'login' | 'register';
 

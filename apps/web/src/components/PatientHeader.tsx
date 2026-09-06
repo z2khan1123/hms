@@ -24,12 +24,15 @@ export function PatientHeader({
   allergies,
   actions,
   linkToProfile = true,
+  showAllergyBanner = true,
 }: {
   patient: HeaderPatient;
   /** Visit-level allergies override the patient record when present. */
   allergies?: string | null;
   actions?: ReactNode;
   linkToProfile?: boolean;
+  /** Set false where the screen already shows a louder alert of its own. */
+  showAllergyBanner?: boolean;
 }) {
   const allergyText = allergies?.trim() || patient.knownAllergies?.trim() || '';
   const name = `${patient.firstName} ${patient.lastName}`;
@@ -59,7 +62,7 @@ export function PatientHeader({
         {actions && <div className="row no-print">{actions}</div>}
       </div>
 
-      {allergyText && (
+      {allergyText && showAllergyBanner && (
         <div className="banner-danger" role="alert">
           <strong>Allergies</strong>
           {allergyText}

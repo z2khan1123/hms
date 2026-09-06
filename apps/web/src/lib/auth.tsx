@@ -1,35 +1,15 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { AuthResponse, SessionUser } from '@hms/shared';
-import { api, tokenStore } from './api';
-
-export interface RegisterArgs {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  tenantName: string;
-}
-
-interface AuthState {
-  user: SessionUser | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (input: RegisterArgs) => Promise<void>;
-  logout: () => void;
-}
-
-const USER_KEY = 'hms.user';
-const AuthContext = createContext<AuthState | null>(null);
+import { api, clearSession, SESSION_USER_KEY, tokenStore } from './api';
+import {
+  AuthContext,
+  type AuthState,
+  type RegisterArgs,
+} from './auth-context';
 
 function readStoredUser(): SessionUser | null {
   try {
-    const raw = localStorage.getItem(USER_KEY);
+    const raw = localStorage.getItem(SESSION_USER_KEY);
     return raw ? (JSON.parse(raw) as SessionUser) : null;
   } catch {
     return null;
@@ -42,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persist = useCallback((res: AuthResponse) => {
     tokenStore.set(res.accessToken, res.refreshToken);
     try {
-      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      localStorage.setItem(SESSION_USER_KEY, JSON.stringify(res.user));
     } catch {
       /* ignore */
     }
@@ -73,12 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refresh) {
       void api.post('/auth/logout', { refreshToken: refresh }).catch(() => {});
     }
-    tokenStore.clear();
-    try {
-      localStorage.removeItem(USER_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearSession();
     setUser(null);
   }, []);
 
@@ -88,10 +63,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
-  return ctx;
 }

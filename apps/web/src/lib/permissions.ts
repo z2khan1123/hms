@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { roleHasPermission, type Permission } from '@hms/shared';
-import { useAuth } from './auth';
+import { useAuth } from './auth-context';
 
 /**
  * Permission check bound to the signed-in user's role. The API enforces the same

@@ -187,7 +187,12 @@ export function OpdVisitPage() {
         </div>
       )}
 
-      <PatientHeader patient={v.patient} allergies={v.knownAllergies} />
+      {/* The full-width alert above already carries the allergy warning. */}
+      <PatientHeader
+        patient={v.patient}
+        allergies={v.knownAllergies}
+        showAllergyBanner={false}
+      />
 
       <div className="card">
         <div className="section">
