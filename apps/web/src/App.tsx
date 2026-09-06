@@ -4,8 +4,15 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { PatientNewPage } from './pages/PatientNewPage';
+import { PatientEditPage } from './pages/PatientEditPage';
+import { PatientProfilePage } from './pages/PatientProfilePage';
 import { AppointmentsPage } from './pages/AppointmentsPage';
 import { AppointmentNewPage } from './pages/AppointmentNewPage';
+import { OpdListPage } from './pages/OpdListPage';
+import { OpdNewPage } from './pages/OpdNewPage';
+import { OpdVisitPage } from './pages/OpdVisitPage';
+import { CaseBillingPage } from './pages/CaseBillingPage';
+import { ChargeMasterPage } from './pages/ChargeMasterPage';
 
 export default function App() {
   return (
@@ -21,8 +28,15 @@ export default function App() {
         <Route index element={<Navigate to="/patients" replace />} />
         <Route path="patients" element={<PatientsPage />} />
         <Route path="patients/new" element={<PatientNewPage />} />
+        <Route path="patients/:id" element={<PatientProfilePage />} />
+        <Route path="patients/:id/edit" element={<PatientEditPage />} />
         <Route path="appointments" element={<AppointmentsPage />} />
         <Route path="appointments/new" element={<AppointmentNewPage />} />
+        <Route path="opd" element={<OpdListPage />} />
+        <Route path="opd/new" element={<OpdNewPage />} />
+        <Route path="opd/:id" element={<OpdVisitPage />} />
+        <Route path="cases/:id/billing" element={<CaseBillingPage />} />
+        <Route path="setup/charges" element={<ChargeMasterPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

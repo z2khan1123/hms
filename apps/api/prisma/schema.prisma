@@ -329,6 +329,9 @@ model Case {
   status   CaseStatus @default(open)
   openedAt DateTime   @default(now())
   closedAt DateTime?
+  /// Why the episode was closed — `closeCaseSchema` accepts it and the audit
+  /// trail deliberately stores no request bodies, so it is kept on the row.
+  closedReason String?
 
   isCasualty Boolean @default(false)
   reference  String?
@@ -535,8 +538,12 @@ model OpdVisit {
   /// Allergies as stated at this visit; the patient master holds the running record.
   knownAllergies       String?
 
-  status      OpdVisitStatus @default(waiting)
-  createdById String?        @db.Uuid
+  status OpdVisitStatus @default(waiting)
+  /// Why the visit was cancelled — `setOpdVisitStatusSchema` accepts a reason and
+  /// a cancelled visit that cannot say why is not defensible at a front desk.
+  cancelReason String?
+
+  createdById String? @db.Uuid
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 

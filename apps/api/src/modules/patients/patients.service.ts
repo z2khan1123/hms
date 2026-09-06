@@ -1,15 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Prisma, type Patient } from '@prisma/client';
 import {
-  type Address,
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
+import {
   type CreatePatientInput,
   type Paginated,
   type Patient as PatientDto,
   type UpdatePatientInput,
 } from '@hms/shared';
 import { createHash } from 'node:crypto';
+import { SequenceService } from '../../common/sequence/sequence.service.js';
+import { parseIsoDate, parseIsoDateOrNull } from '../../common/util/dates.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import {
+  patientDetailInclude,
+  toPatientDto,
+} from './patients.mapper.js';
 
 interface ListOptions {
   page: number;
@@ -22,39 +31,50 @@ export class PatientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly sequence: SequenceService,
   ) {}
 
   async create(
     tenantId: string,
     input: CreatePatientInput,
   ): Promise<PatientDto> {
-    const nid = input.nationalId
-      ? this.hashNationalId(input.nationalId)
-      : null;
+    const nid = input.nationalId ? this.hashNationalId(input.nationalId) : null;
+    if (input.tpaId) await this.assertTpa(tenantId, input.tpaId);
 
     const patient = await this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.update({
-        where: { id: tenantId },
-        data: { mrnSeq: { increment: 1 } },
-      });
-      const mrn = `${tenant.mrnPrefix}-${String(tenant.mrnSeq).padStart(6, '0')}`;
+      const mrn = await this.sequence.next(tx, tenantId, 'mrn');
       return tx.patient.create({
         data: {
           tenantId,
           mrn,
           firstName: input.firstName,
           lastName: input.lastName,
+          guardianName: input.guardianName ?? null,
           gender: input.gender,
-          birthDate: new Date(input.birthDate),
+          birthDate: parseIsoDate(input.birthDate),
+          maritalStatus: input.maritalStatus ?? null,
+          bloodType: input.bloodType ?? null,
+
           phone: input.phone,
+          alternatePhone: input.alternatePhone ?? null,
           email: input.email ?? null,
+
           nationalIdHash: nid?.hash ?? null,
           nationalIdLast4: nid?.last4 ?? null,
-          bloodType: input.bloodType ?? null,
+
+          photoUrl: input.photoUrl ?? null,
+          knownAllergies: input.knownAllergies ?? null,
+          remarks: input.remarks ?? null,
+
+          tpaId: input.tpaId ?? null,
+          tpaMemberId: input.tpaMemberId ?? null,
+          tpaValidTill: parseIsoDateOrNull(input.tpaValidTill),
+
           ...(input.address
             ? { address: input.address as Prisma.InputJsonValue }
             : {}),
         },
+        include: patientDetailInclude,
       });
     });
 
@@ -75,6 +95,8 @@ export class PatientsService {
               { lastName: { contains: opts.q, mode: 'insensitive' } },
               { mrn: { contains: opts.q, mode: 'insensitive' } },
               { phone: { contains: opts.q } },
+              // CNIC is only ever stored hashed; the last 4 are what a desk can search on.
+              { nationalIdLast4: { contains: opts.q } },
             ],
           }
         : {}),
@@ -83,6 +105,7 @@ export class PatientsService {
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.patient.findMany({
         where,
+        include: patientDetailInclude,
         orderBy: { createdAt: 'desc' },
         skip: (opts.page - 1) * opts.pageSize,
         take: opts.pageSize,
@@ -102,6 +125,7 @@ export class PatientsService {
   async get(tenantId: string, id: string): Promise<PatientDto> {
     const patient = await this.prisma.patient.findFirst({
       where: { id, tenantId, deletedAt: null },
+      include: patientDetailInclude,
     });
     if (!patient) throw new NotFoundException('Patient not found');
     return toPatientDto(patient);
@@ -116,25 +140,40 @@ export class PatientsService {
     const nid = input.nationalId
       ? this.hashNationalId(input.nationalId)
       : undefined;
+    if (input.tpaId) await this.assertTpa(tenantId, input.tpaId);
 
     const patient = await this.prisma.patient.update({
       where: { id },
       data: {
         firstName: input.firstName,
         lastName: input.lastName,
+        guardianName: input.guardianName,
         gender: input.gender,
-        birthDate: input.birthDate ? new Date(input.birthDate) : undefined,
-        phone: input.phone,
-        email: input.email,
+        birthDate: input.birthDate ? parseIsoDate(input.birthDate) : undefined,
+        maritalStatus: input.maritalStatus,
         bloodType: input.bloodType,
+
+        phone: input.phone,
+        alternatePhone: input.alternatePhone,
+        email: input.email,
+
+        photoUrl: input.photoUrl,
+        knownAllergies: input.knownAllergies,
+        remarks: input.remarks,
+
+        tpaId: input.tpaId,
+        tpaMemberId: input.tpaMemberId,
+        ...(input.tpaValidTill !== undefined
+          ? { tpaValidTill: parseIsoDate(input.tpaValidTill) }
+          : {}),
+
         status: input.status,
         ...(input.address !== undefined
           ? { address: input.address as Prisma.InputJsonValue }
           : {}),
-        ...(nid
-          ? { nationalIdHash: nid.hash, nationalIdLast4: nid.last4 }
-          : {}),
+        ...(nid ? { nationalIdHash: nid.hash, nationalIdLast4: nid.last4 } : {}),
       },
+      include: patientDetailInclude,
     });
     return toPatientDto(patient);
   }
@@ -147,6 +186,14 @@ export class PatientsService {
     });
   }
 
+  private async assertTpa(tenantId: string, tpaId: string): Promise<void> {
+    const tpa = await this.prisma.tpa.findFirst({
+      where: { id: tpaId, tenantId },
+      select: { id: true },
+    });
+    if (!tpa) throw new BadRequestException('Unknown TPA');
+  }
+
   private hashNationalId(cnic: string): { hash: string; last4: string } {
     const digits = cnic.replace(/\D/g, '');
     const salt = this.config.getOrThrow<string>('NATIONAL_ID_HASH_SALT');
@@ -155,23 +202,4 @@ export class PatientsService {
       last4: digits.slice(-4),
     };
   }
-}
-
-function toPatientDto(p: Patient): PatientDto {
-  return {
-    id: p.id,
-    mrn: p.mrn,
-    firstName: p.firstName,
-    lastName: p.lastName,
-    gender: p.gender,
-    birthDate: p.birthDate.toISOString().slice(0, 10),
-    phone: p.phone,
-    email: p.email,
-    nationalIdLast4: p.nationalIdLast4,
-    address: (p.address as Address | null) ?? null,
-    bloodType: p.bloodType,
-    status: p.status,
-    createdAt: p.createdAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
-  };
 }

@@ -11,13 +11,21 @@ import { validateEnv } from './config/env.schema.js';
 import { AuditModule } from './common/audit/audit.module.js';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard.js';
 import { PermissionsGuard } from './common/auth/permissions.guard.js';
+import { SequenceModule } from './common/sequence/sequence.module.js';
 import { ContextMiddleware } from './common/tenant/context.middleware.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AppointmentsModule } from './modules/appointments/appointments.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { BillingModule } from './modules/billing/billing.module.js';
+import { CasesModule } from './modules/cases/cases.module.js';
+import { ChargeMasterModule } from './modules/charge-master/charge-master.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { OpdModule } from './modules/opd/opd.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
 import { PractitionersModule } from './modules/practitioners/practitioners.module.js';
+import { TpaModule } from './modules/tpa/tpa.module.js';
+import { VitalsModule } from './modules/vitals/vitals.module.js';
+import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
 
 @Module({
   imports: [
@@ -41,12 +49,20 @@ import { PractitionersModule } from './modules/practitioners/practitioners.modul
       }),
     }),
     PrismaModule,
+    SequenceModule,
     AuditModule,
     HealthModule,
     AuthModule,
     PatientsModule,
     PractitionersModule,
     AppointmentsModule,
+    TpaModule,
+    ChargeMasterModule,
+    VocabularyModule,
+    CasesModule,
+    BillingModule,
+    OpdModule,
+    VitalsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
