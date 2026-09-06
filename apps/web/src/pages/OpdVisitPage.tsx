@@ -264,6 +264,15 @@ export function OpdVisitPage() {
                   Cancel visit
                 </button>
               )}
+            {can('admission:create') && v.status !== 'cancelled' && (
+              <Link
+                to={`/admissions/new?patientId=${v.patient.id}&fromOpdVisitId=${v.id}`}
+              >
+                <button type="button" className="secondary">
+                  Admit to ward
+                </button>
+              </Link>
+            )}
           </div>
 
           {cancelling && (

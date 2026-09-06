@@ -22,6 +22,7 @@ export interface CreateVitalTypeInput {
 export interface VitalListFilter {
   patientId?: string;
   opdVisitId?: string;
+  admissionId?: string;
 }
 
 const LIST_LIMIT = 500;
@@ -67,6 +68,7 @@ export class VitalsService {
         tenantId,
         patientId: filter.patientId,
         opdVisitId: filter.opdVisitId,
+        admissionId: filter.admissionId,
       },
       include: vitalReadingInclude,
       orderBy: { recordedAt: 'desc' },
@@ -126,6 +128,24 @@ export class VitalsService {
         }
       }
 
+      if (input.admissionId) {
+        const admission = await tx.admission.findFirst({
+          where: { id: input.admissionId, tenantId },
+          select: { id: true, patientId: true, caseId: true },
+        });
+        if (!admission) throw new BadRequestException('Unknown admission');
+        if (admission.patientId !== input.patientId) {
+          throw new BadRequestException(
+            'That admission belongs to a different patient',
+          );
+        }
+        if (input.caseId && admission.caseId !== input.caseId) {
+          throw new BadRequestException(
+            'That admission belongs to a different case',
+          );
+        }
+      }
+
       const typeIds = [...new Set(input.readings.map((r) => r.vitalTypeId))];
       const types = await tx.vitalType.findMany({
         where: { tenantId, id: { in: typeIds } },
@@ -144,6 +164,7 @@ export class VitalsService {
             patientId: input.patientId,
             caseId: input.caseId ?? null,
             opdVisitId: input.opdVisitId ?? null,
+            admissionId: input.admissionId ?? null,
             vitalTypeId: reading.vitalTypeId,
             value: reading.value,
             flag: flagFor(reading.value, type.refLow, type.refHigh),

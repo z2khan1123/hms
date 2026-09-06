@@ -16,6 +16,11 @@ import { CaseBillingPage } from './pages/CaseBillingPage';
 import { CashierPage } from './pages/CashierPage';
 import { DepartmentWorklistPage } from './pages/DepartmentWorklistPage';
 import { ServicesPage } from './pages/ServicesPage';
+import { BedBoardPage } from './pages/BedBoardPage';
+import { AdmissionsPage } from './pages/AdmissionsPage';
+import { AdmitPage } from './pages/AdmitPage';
+import { AdmissionPage } from './pages/AdmissionPage';
+import { WardSetupPage } from './pages/WardSetupPage';
 
 export default function App() {
   return (
@@ -39,10 +44,15 @@ export default function App() {
         <Route path="opd/new" element={<OpdNewPage />} />
         <Route path="opd/:id" element={<OpdVisitPage />} />
         <Route path="queue" element={<DoctorQueuePage />} />
+        <Route path="beds" element={<BedBoardPage />} />
+        <Route path="admissions" element={<AdmissionsPage />} />
+        <Route path="admissions/new" element={<AdmitPage />} />
+        <Route path="admissions/:id" element={<AdmissionPage />} />
         <Route path="billing/pending" element={<CashierPage />} />
         <Route path="worklist" element={<DepartmentWorklistPage />} />
         <Route path="cases/:id/billing" element={<CaseBillingPage />} />
         <Route path="setup/services" element={<ServicesPage />} />
+        <Route path="setup/wards" element={<WardSetupPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

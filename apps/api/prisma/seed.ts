@@ -53,6 +53,7 @@ async function main(): Promise<void> {
   await seedClinicalVocabulary(tenantId);
   await seedIcd10();
   await seedVitalTypes(tenantId);
+  await seedWardsAndBeds(tenantId);
 
   console.log('\nSeed complete.');
   console.log('  Tenant:   %s (%s)', DEMO.tenantName, tenantId);
@@ -418,6 +419,78 @@ async function seedVitalTypes(tenantId: string): Promise<void> {
       where: { tenantId, name: t.name },
     });
     if (!found) await prisma.vitalType.create({ data: t });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wards & beds — enough of a layout to see a bed board. Occupancy is never
+// seeded: a bed is occupied only when an admission opens an assignment on it.
+// ---------------------------------------------------------------------------
+
+async function seedWardsAndBeds(tenantId: string): Promise<void> {
+  const floorByName = new Map<string, string>();
+  for (const [name, sortOrder] of [
+    ['Ground Floor', 0],
+    ['First Floor', 1],
+  ] as const) {
+    const found =
+      (await prisma.floor.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.floor.create({ data: { tenantId, name, sortOrder } }));
+    floorByName.set(name, found.id);
+  }
+
+  const bedTypeByName = new Map<string, string>();
+  for (const [name, defaultNightlyRateMinor] of [
+    ['Standard', 200000],
+    ['Private', 500000],
+    ['ICU', 1500000],
+  ] as const) {
+    const found =
+      (await prisma.bedType.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.bedType.create({
+        data: { tenantId, name, defaultNightlyRateMinor },
+      }));
+    bedTypeByName.set(name, found.id);
+  }
+
+  const wardByName = new Map<string, string>();
+  for (const [name, floorName] of [
+    ['General Male', 'Ground Floor'],
+    ['General Female', 'Ground Floor'],
+    ['Private Ward', 'First Floor'],
+    ['ICU', 'First Floor'],
+  ] as const) {
+    const floorId = floorByName.get(floorName)!;
+    const found =
+      (await prisma.ward.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.ward.create({ data: { tenantId, name, floorId } }));
+    wardByName.set(name, found.id);
+  }
+
+  const ranges: {
+    ward: string;
+    bedType: string;
+    prefix: string;
+    from: number;
+    to: number;
+  }[] = [
+    { ward: 'General Male', bedType: 'Standard', prefix: 'GF-', from: 1, to: 8 },
+    { ward: 'General Female', bedType: 'Standard', prefix: 'GF-', from: 9, to: 14 },
+    { ward: 'Private Ward', bedType: 'Private', prefix: 'FF-', from: 1, to: 4 },
+    { ward: 'ICU', bedType: 'ICU', prefix: 'ICU-', from: 1, to: 3 },
+  ];
+  for (const r of ranges) {
+    const wardId = wardByName.get(r.ward)!;
+    const bedTypeId = bedTypeByName.get(r.bedType)!;
+    for (let n = r.from; n <= r.to; n += 1) {
+      const name = `${r.prefix}${n}`;
+      const found = await prisma.bed.findFirst({ where: { tenantId, name } });
+      if (!found) {
+        await prisma.bed.create({
+          data: { tenantId, wardId, bedTypeId, name },
+        });
+      }
+    }
   }
 }
 

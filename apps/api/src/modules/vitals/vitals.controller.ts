@@ -23,10 +23,13 @@ const vitalListQuerySchema = z
   .object({
     patientId: z.string().uuid().optional(),
     opdVisitId: z.string().uuid().optional(),
+    admissionId: z.string().uuid().optional(),
   })
-  .refine((q) => q.patientId != null || q.opdVisitId != null, {
-    message: 'patientId or opdVisitId is required',
-  });
+  .refine(
+    (q) =>
+      q.patientId != null || q.opdVisitId != null || q.admissionId != null,
+    { message: 'patientId, opdVisitId or admissionId is required' },
+  );
 
 @Controller('vitals')
 export class VitalsController {

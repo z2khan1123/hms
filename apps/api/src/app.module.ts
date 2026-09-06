@@ -14,6 +14,7 @@ import { PermissionsGuard } from './common/auth/permissions.guard.js';
 import { SequenceModule } from './common/sequence/sequence.module.js';
 import { ContextMiddleware } from './common/tenant/context.middleware.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { AdmissionsModule } from './modules/admissions/admissions.module.js';
 import { AppointmentsModule } from './modules/appointments/appointments.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
@@ -22,6 +23,7 @@ import { ServicesModule } from './modules/services/services.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
+import { WardsModule } from './modules/wards/wards.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
 import { PractitionersModule } from './modules/practitioners/practitioners.module.js';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module.js';
@@ -67,6 +69,8 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     OrdersModule,
     PrescriptionsModule,
     VitalsModule,
+    WardsModule,
+    AdmissionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -25,6 +25,8 @@ export const recordVitalsSchema = z.object({
   patientId: z.string().uuid(),
   caseId: z.string().uuid().optional(),
   opdVisitId: z.string().uuid().optional(),
+  /** Set for vitals taken on a ward round rather than in clinic. */
+  admissionId: z.string().uuid().optional(),
   recordedAt: isoDateTimeSchema.optional(),
   readings: z
     .array(

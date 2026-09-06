@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type BillItem, type Payment } from '@prisma/client';
+import { Prisma, type BillItem, type Payment , type CaseStatus } from '@prisma/client';
 import {
   type AddBillItemInput,
   type BillItem as BillItemDto,
@@ -58,9 +58,18 @@ export class BillingService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     createdById: string,
-    input: AddBillItemInput & { discountReason?: string | null },
+    input: AddBillItemInput & {
+      discountReason?: string | null;
+      /** Widen which case statuses accept a line — see CasesService.assertOpen. */
+      billableStatuses?: readonly CaseStatus[];
+    },
   ): Promise<BillItem> {
-    await this.cases.assertOpen(tx, tenantId, input.caseId);
+    await this.cases.assertOpen(
+      tx,
+      tenantId,
+      input.caseId,
+      input.billableStatuses,
+    );
 
     let serviceId: string | null = null;
     let serviceName: string;
@@ -122,17 +131,14 @@ export class BillingService {
     });
   }
 
-  async listBillItems(
-    tenantId: string,
-    caseId: string,
-  ): Promise<BillItemDto[]> {
-    await this.assertCaseExists(tenantId, caseId);
-    const rows = await this.prisma.billItem.findMany({
-      where: { tenantId, caseId },
-      orderBy: { chargedAt: 'asc' },
-    });
-    return rows.map(toBillItemDto);
-  }
+  /**
+   * A bed charge, confirmed at discharge and never posted per-night on its own.
+   * It shares the snapshot + `computeBillLine` path of every other line, so the
+   * arithmetic lives in exactly one place. Unlike `addBillItemInTx` it also
+   * accepts a case in `moved_to_ipd` (a patient admitted straight from OPD),
+   * rejecting only a closed one.
+   */
+
 
   /** Allowed only while the case is open — a closed episode's bill is final. */
   async removeBillItem(tenantId: string, id: string): Promise<void> {
@@ -148,6 +154,18 @@ export class BillingService {
   }
 
   // --- payments ------------------------------------------------------------
+
+  async listBillItems(
+    tenantId: string,
+    caseId: string,
+  ): Promise<BillItemDto[]> {
+    await this.assertCaseExists(tenantId, caseId);
+    const rows = await this.prisma.billItem.findMany({
+      where: { tenantId, caseId },
+      orderBy: { chargedAt: 'asc' },
+    });
+    return rows.map(toBillItemDto);
+  }
 
   async createPayment(
     tenantId: string,

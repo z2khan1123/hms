@@ -199,14 +199,20 @@ export class CasesService {
   }
 
   /** Shared guard: billing may only move money on a case that is still open. */
+  /**
+   * A case must be billable to take a new line. `open` always is; an inpatient
+   * case sits in `moved_to_ipd` for the whole stay and must still accept the
+   * bed charge at discharge, so callers can widen the set. `closed` never is.
+   */
   async assertOpen(
     tx: Prisma.TransactionClient,
     tenantId: string,
     caseId: string,
+    billableStatuses: readonly CaseStatus[] = ['open'],
   ): Promise<Case> {
     const found = await tx.case.findFirst({ where: { id: caseId, tenantId } });
     if (!found) throw new NotFoundException('Case not found');
-    if (found.status !== 'open') {
+    if (!billableStatuses.includes(found.status)) {
       throw new ConflictException('Case is closed');
     }
     return found;

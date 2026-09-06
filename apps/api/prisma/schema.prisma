@@ -120,6 +120,22 @@ enum ServiceOrderStatus {
   cancelled
 }
 
+/// A bed being BLOCKED is a stored decision (cleaning, maintenance, reserved).
+/// A bed being OCCUPIED is not stored — it is derived from an open bed
+/// assignment, so the board can never disagree with who is actually in it.
+enum BedBlockReason {
+  cleaning
+  maintenance
+  reserved
+  other
+}
+
+enum AdmissionStatus {
+  admitted
+  discharged
+  cancelled
+}
+
 enum VitalFlag {
   low
   normal
@@ -154,6 +170,8 @@ model Tenant {
   opdSeq        Int    @default(0)
   receiptPrefix String @default("RCPT")
   receiptSeq    Int    @default(0)
+  admissionPrefix String @default("IPD")
+  admissionSeq    Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -175,6 +193,13 @@ model Tenant {
   vitalReadings     VitalReading[]
   serviceOrders     ServiceOrder[]
   prescriptionItems PrescriptionItem[]
+  floors            Floor[]
+  wards             Ward[]
+  bedTypes          BedType[]
+  beds              Bed[]
+  admissions        Admission[]
+  bedAssignments    BedAssignment[]
+  nurseNotes        NurseNote[]
 }
 
 model User {
@@ -278,6 +303,7 @@ model Patient {
   opdVisits     OpdVisit[]
   vitalReadings VitalReading[]
   serviceOrders ServiceOrder[]
+  admissions    Admission[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
@@ -305,6 +331,7 @@ model Practitioner {
 
   appointments Appointment[]
   opdVisits    OpdVisit[]
+  admissions   Admission[]
 
   @@index([tenantId, lastName, firstName])
 }
@@ -369,6 +396,7 @@ model Case {
   payments      Payment[]
   vitalReadings VitalReading[]
   serviceOrders ServiceOrder[]
+  admissions    Admission[]
 
   @@unique([tenantId, caseNo])
   @@index([tenantId, patientId, openedAt])
@@ -529,6 +557,7 @@ model OpdVisit {
   billItems         BillItem[]
   serviceOrders     ServiceOrder[]
   prescriptionItems PrescriptionItem[]
+  admission         Admission?
 
   @@unique([tenantId, opdNo])
   @@index([tenantId, visitAt])
@@ -652,6 +681,175 @@ model PrescriptionItem {
 }
 
 // ---------------------------------------------------------------------------
+// Wards and beds — every hospital enters its own, so seven beds and seventy
+// run identical code. Nothing here is a product tier.
+// ---------------------------------------------------------------------------
+
+model Floor {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wards Ward[]
+
+  @@unique([tenantId, name])
+}
+
+/// e.g. Standard, Private, VIP, ICU. Carries a SUGGESTED nightly rate; what the
+/// patient is actually charged is entered on their bill at discharge.
+model BedType {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @db.Uuid
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id])
+  name                    String
+  defaultNightlyRateMinor Int?
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  beds Bed[]
+
+  @@unique([tenantId, name])
+}
+
+model Ward {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  floorId   String   @db.Uuid
+  floor     Floor    @relation(fields: [floorId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  beds Bed[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, floorId])
+}
+
+model Bed {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  wardId    String  @db.Uuid
+  ward      Ward    @relation(fields: [wardId], references: [id])
+  bedTypeId String  @db.Uuid
+  bedType   BedType @relation(fields: [bedTypeId], references: [id])
+
+  /// Bed number as the ward writes it, e.g. GF-101.
+  name String
+
+  /// Taken out of service deliberately. Occupancy is NEVER stored here.
+  isBlocked   Boolean         @default(false)
+  blockReason BedBlockReason?
+  blockNote   String?
+  isActive    Boolean         @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments BedAssignment[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, wardId])
+}
+
+// ---------------------------------------------------------------------------
+// Admission — the inpatient episode, hanging off the same Case spine as OPD
+// ---------------------------------------------------------------------------
+
+model Admission {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  caseId    String  @db.Uuid
+  case      Case    @relation(fields: [caseId], references: [id])
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  admissionNo String
+
+  /// Set when the patient was moved in from an outpatient visit.
+  fromOpdVisitId String?   @unique @db.Uuid
+  fromOpdVisit   OpdVisit? @relation(fields: [fromOpdVisitId], references: [id])
+
+  practitionerId String       @db.Uuid
+  practitioner   Practitioner @relation(fields: [practitionerId], references: [id])
+
+  status       AdmissionStatus @default(admitted)
+  admittedAt   DateTime        @default(now())
+  dischargedAt DateTime?
+
+  provisionalDiagnosis String?
+  admissionNote        String?
+
+  /// Filled at discharge.
+  dischargeSummary String?
+  dischargeAdvice  String?
+  dischargedById   String?   @db.Uuid
+  /// Discharge can be reverted; the reason is kept rather than the row erased.
+  revertedAt       DateTime?
+  revertReason     String?
+
+  admittedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bedAssignments BedAssignment[]
+  nurseNotes     NurseNote[]
+  vitalReadings  VitalReading[]
+
+  @@unique([tenantId, admissionNo])
+  @@index([tenantId, status])
+  @@index([tenantId, patientId, admittedAt])
+  @@index([tenantId, caseId])
+}
+
+/// Which bed, from when to when. An assignment with toAt = null IS the
+/// occupancy — there is no separate flag to fall out of step with it.
+model BedAssignment {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  admissionId String    @db.Uuid
+  admission   Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  bedId       String    @db.Uuid
+  bed         Bed       @relation(fields: [bedId], references: [id])
+
+  fromAt     DateTime  @default(now())
+  toAt       DateTime?
+  moveReason String?
+
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, admissionId])
+  @@index([tenantId, bedId, toAt])
+}
+
+model NurseNote {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  admissionId String    @db.Uuid
+  admission   Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+
+  note         String
+  recordedAt   DateTime @default(now())
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, admissionId, recordedAt])
+}
+
+// ---------------------------------------------------------------------------
 // Vitals
 // ---------------------------------------------------------------------------
 
@@ -675,17 +873,19 @@ model VitalType {
 }
 
 model VitalReading {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
-  tenant      Tenant    @relation(fields: [tenantId], references: [id])
-  patientId   String    @db.Uuid
-  patient     Patient   @relation(fields: [patientId], references: [id])
-  caseId      String?   @db.Uuid
-  case        Case?     @relation(fields: [caseId], references: [id])
-  opdVisitId  String?   @db.Uuid
-  opdVisit    OpdVisit? @relation(fields: [opdVisitId], references: [id])
-  vitalTypeId String    @db.Uuid
-  vitalType   VitalType @relation(fields: [vitalTypeId], references: [id])
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @db.Uuid
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  patientId   String     @db.Uuid
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  caseId      String?    @db.Uuid
+  case        Case?      @relation(fields: [caseId], references: [id])
+  opdVisitId  String?    @db.Uuid
+  opdVisit    OpdVisit?  @relation(fields: [opdVisitId], references: [id])
+  admissionId String?    @db.Uuid
+  admission   Admission? @relation(fields: [admissionId], references: [id])
+  vitalTypeId String     @db.Uuid
+  vitalType   VitalType  @relation(fields: [vitalTypeId], references: [id])
 
   value        Float
   flag         VitalFlag?

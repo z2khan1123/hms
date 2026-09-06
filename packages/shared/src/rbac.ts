@@ -86,6 +86,16 @@ export const PERMISSIONS = [
   'payment:create',
   'payment:read',
   'payment:reverse',
+  // wards and beds
+  'ward:read',
+  'ward:manage',
+  // inpatient
+  'admission:create',
+  'admission:read',
+  'admission:transfer',
+  'admission:discharge',
+  'nursenote:read',
+  'nursenote:write',
   // payers
   'tpa:read',
   'tpa:manage',
@@ -108,6 +118,9 @@ const READ_ONLY_SET: Permission[] = [
   'payment:read',
   'order:read',
   'prescription:read',
+  'ward:read',
+  'admission:read',
+  'nursenote:read',
   'tpa:read',
 ];
 
@@ -146,6 +159,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'payment:read',
     'order:read',
     'prescription:read',
+    'ward:read',
+    'admission:create',
+    'admission:read',
+    'admission:transfer',
+    'nursenote:read',
     'tpa:read',
   ],
 
@@ -173,6 +191,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'order:cancel',
     'prescription:read',
     'prescription:write',
+    'ward:read',
+    'admission:create',
+    'admission:read',
+    'admission:transfer',
+    'admission:discharge',
+    'nursenote:read',
+    'nursenote:write',
   ],
 
   nurse: [
@@ -187,6 +212,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'practitioner:read',
     'order:read',
     'prescription:read',
+    'ward:read',
+    'admission:read',
+    'admission:transfer',
+    'nursenote:read',
+    'nursenote:write',
   ],
 
   accountant: [
@@ -200,6 +230,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'bill:delete',
     'bill:approve',
     'order:read',
+    'ward:read',
+    'admission:read',
     'payment:create',
     'payment:read',
     'payment:reverse',

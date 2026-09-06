@@ -237,6 +237,69 @@ th.num { text-align: right; }
 .line-total { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; padding: 10px 12px; background: #fafbfc; border: 1px solid var(--border); border-radius: 6px; }
 .line-total span strong { font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------------- IPD / bed board */
+
+/* nav dropdown (groups the Setup links) */
+.topbar nav .nav-menu { position: relative; }
+.topbar nav .nav-menu > summary {
+  list-style: none; cursor: pointer; color: var(--muted); padding: 6px 0;
+}
+.topbar nav .nav-menu > summary::-webkit-details-marker { display: none; }
+.topbar nav .nav-menu[open] > summary { color: var(--text); }
+.topbar nav .nav-menu .nav-menu-list {
+  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(16 24 40 / 12%); padding: 6px; min-width: 170px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.topbar nav .nav-menu .nav-menu-list a { padding: 7px 9px; border-radius: 4px; white-space: nowrap; }
+.topbar nav .nav-menu .nav-menu-list a.active { border: 0; background: var(--info-bg); color: var(--text); }
+
+/* board totals */
+.board-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.board-total { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.board-total .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; display: block; }
+.board-total .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+@media (max-width: 900px) { .board-totals { grid-template-columns: 1fr 1fr; } }
+
+.board-floor { margin-bottom: 22px; }
+.board-floor > h2 { font-size: 15px; margin: 0 0 10px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.board-ward { margin: 0 0 16px; }
+.board-ward > h3 { font-size: 13px; color: var(--muted); margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+.bed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+
+.bed-tile {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; background: var(--surface); font-size: 13px; color: inherit;
+  display: flex; flex-direction: column; gap: 4px; min-height: 104px;
+  text-align: left; width: 100%;
+}
+.bed-tile .bed-name { font-weight: 700; font-size: 14px; }
+.bed-tile .bed-sub { color: var(--muted); font-size: 12px; }
+.bed-tile .bed-state {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+}
+.bed-tile .bed-state::before { font-size: 12px; line-height: 1; }
+
+/* state is encoded three ways over and above colour: a word, a glyph, and a border style */
+.bed-tile.is-available { border-style: dashed; background: var(--bg); }
+.bed-tile.is-available .bed-state { color: var(--muted); }
+.bed-tile.is-available .bed-state::before { content: "\25CB"; } /* hollow circle */
+
+.bed-tile.is-occupied { border-left: 5px solid var(--primary); background: var(--info-bg); }
+.bed-tile.is-occupied .bed-state { color: var(--primary); }
+.bed-tile.is-occupied .bed-state::before { content: "\25CF"; } /* filled circle */
+
+.bed-tile.is-blocked { border-style: double; border-width: 3px; background: var(--warn-bg); }
+.bed-tile.is-blocked .bed-state { color: var(--warn); }
+.bed-tile.is-blocked .bed-state::before { content: "\2715"; } /* cross */
+
+button.bed-tile { cursor: pointer; }
+button.bed-tile:hover { filter: brightness(0.98); }
+.bed-tile .bed-actions { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
+.bed-tile .bed-actions button, .bed-tile .bed-actions a button { padding: 3px 8px; font-size: 12px; }
+
 .alert-info { background: var(--info-bg); color: var(--primary); border: 1px solid #c6d9fb; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
 .alert-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid #bfe3ce; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
 button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
