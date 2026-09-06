@@ -1,42 +1,102 @@
 /**
  * Single source of truth for roles and permissions.
- * The API's RolesGuard and the web app's UI gating both read from here.
+ * The API's PermissionsGuard and the web app's UI gating both read from here.
  */
 
 export const ROLES = [
   'platform_admin',
   'hospital_admin',
-  'front_desk',
-  'practitioner',
+  'doctor',
+  'nurse',
+  'receptionist',
+  'accountant',
+  'pharmacist',
+  'pathologist',
+  'radiologist',
   'read_only',
 ] as const;
 
 export type Role = (typeof ROLES)[number];
 
+export const ROLE_LABELS: Record<Role, string> = {
+  platform_admin: 'Platform Admin',
+  hospital_admin: 'Hospital Admin',
+  doctor: 'Doctor',
+  nurse: 'Nurse',
+  receptionist: 'Receptionist',
+  accountant: 'Accountant',
+  pharmacist: 'Pharmacist',
+  pathologist: 'Pathologist',
+  radiologist: 'Radiologist',
+  read_only: 'Read Only',
+};
+
 export const PERMISSIONS = [
   // platform
   'tenant:manage',
-  // users
+  // users & staff
   'user:read',
   'user:manage',
+  'practitioner:read',
+  'practitioner:manage',
   // patients
   'patient:create',
   'patient:read',
   'patient:update',
   'patient:delete',
-  // practitioners
-  'practitioner:read',
-  'practitioner:manage',
+  // cases
+  'case:create',
+  'case:read',
+  'case:update',
+  'case:close',
   // appointments
   'appointment:create',
   'appointment:read',
   'appointment:update',
   'appointment:cancel',
+  // OPD
+  'opd:create',
+  'opd:read',
+  'opd:update',
+  'opd:cancel',
+  // vitals
+  'vital:create',
+  'vital:read',
+  // clinical vocabulary (symptoms, findings, ICD-10)
+  'vocabulary:read',
+  'vocabulary:manage',
+  // charge master
+  'charge_master:read',
+  'charge_master:manage',
+  // billing
+  'charge:create',
+  'charge:read',
+  'charge:delete',
+  'payment:create',
+  'payment:read',
+  'payment:reverse',
+  // payers
+  'tpa:read',
+  'tpa:manage',
   // audit
   'audit:read',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
+
+const READ_ONLY_SET: Permission[] = [
+  'patient:read',
+  'case:read',
+  'appointment:read',
+  'opd:read',
+  'vital:read',
+  'vocabulary:read',
+  'practitioner:read',
+  'charge:read',
+  'charge_master:read',
+  'payment:read',
+  'tpa:read',
+];
 
 /**
  * Role -> permissions. A permission not listed for a role is denied.
@@ -44,38 +104,90 @@ export type Permission = (typeof PERMISSIONS)[number];
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   platform_admin: ['tenant:manage', 'user:read'],
-  hospital_admin: [
-    'user:read',
-    'user:manage',
+
+  hospital_admin: [...PERMISSIONS.filter((p) => p !== 'tenant:manage')],
+
+  receptionist: [
     'patient:create',
     'patient:read',
     'patient:update',
-    'patient:delete',
-    'practitioner:read',
-    'practitioner:manage',
+    'case:create',
+    'case:read',
+    'case:update',
     'appointment:create',
     'appointment:read',
     'appointment:update',
     'appointment:cancel',
+    'opd:create',
+    'opd:read',
+    'opd:update',
+    'opd:cancel',
+    'vital:create',
+    'vital:read',
+    'vocabulary:read',
+    'practitioner:read',
+    'charge_master:read',
+    'charge:create',
+    'charge:read',
+    'payment:create',
+    'payment:read',
+    'tpa:read',
+  ],
+
+  doctor: [
+    'patient:read',
+    'patient:update',
+    'case:read',
+    'case:update',
+    'case:close',
+    'appointment:read',
+    'appointment:update',
+    'opd:read',
+    'opd:update',
+    'vital:create',
+    'vital:read',
+    'vocabulary:read',
+    'vocabulary:manage',
+    'practitioner:read',
+    'charge:read',
+    'charge:create',
+  ],
+
+  nurse: [
+    'patient:read',
+    'case:read',
+    'appointment:read',
+    'opd:read',
+    'opd:update',
+    'vital:create',
+    'vital:read',
+    'vocabulary:read',
+    'practitioner:read',
+  ],
+
+  accountant: [
+    'patient:read',
+    'case:read',
+    'opd:read',
+    'charge_master:read',
+    'charge_master:manage',
+    'charge:create',
+    'charge:read',
+    'charge:delete',
+    'payment:create',
+    'payment:read',
+    'payment:reverse',
+    'tpa:read',
+    'tpa:manage',
     'audit:read',
   ],
-  front_desk: [
-    'patient:create',
-    'patient:read',
-    'patient:update',
-    'practitioner:read',
-    'appointment:create',
-    'appointment:read',
-    'appointment:update',
-    'appointment:cancel',
-  ],
-  practitioner: [
-    'patient:read',
-    'practitioner:read',
-    'appointment:read',
-    'appointment:update',
-  ],
-  read_only: ['patient:read', 'practitioner:read', 'appointment:read'],
+
+  // Their modules land in Phase 3; for now they can see the patient in front of them.
+  pharmacist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
+  pathologist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
+  radiologist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
+
+  read_only: READ_ONLY_SET,
 };
 
 export function permissionsForRole(role: Role): ReadonlySet<Permission> {

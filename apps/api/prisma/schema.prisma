@@ -1,7 +1,12 @@
 // HMS data model. Entity/field names track HL7 FHIR R4 where an analogue exists.
+//
 // Multi-tenancy: every tenant-scoped row carries `tenantId`. Postgres Row-Level
 // Security is added in a separate raw-SQL migration (Prisma does not model RLS) —
 // see docs/architecture.md#multi-tenancy.
+//
+// Money: integer MINOR units (paisa for PKR) in `*Minor` fields — never floats.
+// Percentages: integer BASIS POINTS in `*Bps` fields (1800 = 18.00%).
+// See docs/data-model.md.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,11 +17,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
 enum Role {
   platform_admin
   hospital_admin
-  front_desk
-  practitioner
+  doctor
+  nurse
+  receptionist
+  accountant
+  pharmacist
+  pathologist
+  radiologist
   read_only
 }
 
@@ -25,6 +39,14 @@ enum Gender {
   female
   other
   unknown
+}
+
+enum MaritalStatus {
+  single
+  married
+  widowed
+  separated
+  not_specified
 }
 
 enum PatientStatus {
@@ -41,25 +63,104 @@ enum AppointmentStatus {
   noshow
 }
 
+/// A Case is the spine of the clinical record: visits, charges and payments all
+/// hang off it, which is what makes one consolidated bill per episode possible.
+enum CaseStatus {
+  open
+  closed
+  moved_to_ipd
+}
+
+enum OpdVisitStatus {
+  waiting
+  in_consultation
+  completed
+  cancelled
+}
+
+enum PaymentMode {
+  cash
+  cheque
+  bank_transfer
+  card
+  online
+  other
+}
+
+/// Which department a charge belongs to. Mirrors the charge-type axis every
+/// module bills against.
+enum ChargeTypeKind {
+  opd
+  ipd
+  appointment
+  pathology
+  radiology
+  pharmacy
+  blood_bank
+  ambulance
+  operations
+  investigations
+  procedures
+  supplies
+  other
+}
+
+enum VitalFlag {
+  low
+  normal
+  high
+}
+
 enum AuditOutcome {
   success
   failure
 }
 
+// ---------------------------------------------------------------------------
+// Tenancy & identity
+// ---------------------------------------------------------------------------
+
 model Tenant {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  mrnPrefix String   @default("MRN")
-  mrnSeq    Int      @default(0)
-  isActive  Boolean  @default(true)
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String
+  slug     String  @unique
+  isActive Boolean @default(true)
+
+  /// ISO 4217. Drives minor-unit scaling in the UI.
+  currency String @default("PKR")
+  timezone String @default("Asia/Karachi")
+
+  // Human-facing document numbers. Prefix + zero-padded per-tenant counter.
+  mrnPrefix     String @default("MRN")
+  mrnSeq        Int    @default(0)
+  casePrefix    String @default("CASE")
+  caseSeq       Int    @default(0)
+  opdPrefix     String @default("OPD")
+  opdSeq        Int    @default(0)
+  receiptPrefix String @default("RCPT")
+  receiptSeq    Int    @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  patients      Patient[]
-  practitioners Practitioner[]
-  appointments  Appointment[]
+  users            User[]
+  patients         Patient[]
+  practitioners    Practitioner[]
+  appointments     Appointment[]
+  tpas             Tpa[]
+  cases            Case[]
+  opdVisits        OpdVisit[]
+  chargeCategories ChargeCategory[]
+  unitTypes        UnitType[]
+  taxCategories    TaxCategory[]
+  charges          Charge[]
+  chargeItems      ChargeItem[]
+  payments         Payment[]
+  symptomTypes     SymptomType[]
+  symptoms         Symptom[]
+  findings         Finding[]
+  vitalTypes       VitalType[]
+  vitalReadings    VitalReading[]
 }
 
 model User {
@@ -95,48 +196,97 @@ model RefreshToken {
   @@index([userId])
 }
 
+// ---------------------------------------------------------------------------
+// Patient & payer
+// ---------------------------------------------------------------------------
+
+/// Third Party Administrator — the insurer/panel that settles a patient's bill.
+model Tpa {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @db.Uuid
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+  name               String
+  code               String?
+  phone              String?
+  address            String?
+  contactPersonName  String?
+  contactPersonPhone String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  patients Patient[]
+  cases    Case[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
 model Patient {
-  id              String        @id @default(uuid()) @db.Uuid
-  tenantId        String        @db.Uuid
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  mrn             String
-  firstName       String
-  lastName        String
-  gender          Gender
-  birthDate       DateTime      @db.Date
-  phone           String
-  email           String?
-  // CNIC is never stored in plaintext — salted hash for matching + last 4 for display.
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  mrn      String
+
+  firstName     String
+  lastName      String
+  guardianName  String?
+  gender        Gender
+  birthDate     DateTime       @db.Date
+  maritalStatus MaritalStatus?
+  bloodType     String?
+
+  phone          String
+  alternatePhone String?
+  email          String?
+  address        Json?
+
+  // CNIC is never stored in plaintext — salted hash for matching, last 4 for display.
   nationalIdHash  String?
   nationalIdLast4 String?
-  address         Json?
-  bloodType       String?
-  status          PatientStatus @default(active)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  deletedAt       DateTime?
 
-  appointments Appointment[]
+  photoUrl       String?
+  knownAllergies String?
+  remarks        String?
+
+  tpaId        String?   @db.Uuid
+  tpa          Tpa?      @relation(fields: [tpaId], references: [id])
+  tpaMemberId  String?
+  tpaValidTill DateTime? @db.Date
+
+  status    PatientStatus @default(active)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  appointments  Appointment[]
+  cases         Case[]
+  opdVisits     OpdVisit[]
+  vitalReadings VitalReading[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
   @@index([tenantId, phone])
+  @@index([tenantId, nationalIdHash])
 }
 
 model Practitioner {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  userId    String?  @unique @db.Uuid
-  user      User?    @relation(fields: [userId], references: [id])
-  firstName String
-  lastName  String
-  specialty String?
-  isActive  Boolean  @default(true)
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @db.Uuid
+  tenant     Tenant  @relation(fields: [tenantId], references: [id])
+  userId     String? @unique @db.Uuid
+  user       User?   @relation(fields: [userId], references: [id])
+  firstName  String
+  lastName   String
+  specialty  String?
+  department String?
+  isActive   Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   appointments Appointment[]
+  opdVisits    OpdVisit[]
 
   @@index([tenantId, lastName, firstName])
 }
@@ -158,11 +308,413 @@ model Appointment {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
+  opdVisit OpdVisit?
+
   @@index([tenantId, practitionerId, startsAt])
   @@index([tenantId, patientId, startsAt])
 }
 
-// Append-only. A migration REVOKEs UPDATE/DELETE for the app DB role.
+// ---------------------------------------------------------------------------
+// Case — the episode of care that visits, charges and payments hang off
+// ---------------------------------------------------------------------------
+
+model Case {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  caseNo   String
+  status   CaseStatus @default(open)
+  openedAt DateTime   @default(now())
+  closedAt DateTime?
+
+  isCasualty Boolean @default(false)
+  reference  String?
+
+  // Payer snapshot at the time the case was opened — TPA terms can change later.
+  tpaId        String?   @db.Uuid
+  tpa          Tpa?      @relation(fields: [tpaId], references: [id])
+  tpaMemberId  String?
+  tpaValidTill DateTime? @db.Date
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  opdVisits     OpdVisit[]
+  chargeItems   ChargeItem[]
+  payments      Payment[]
+  vitalReadings VitalReading[]
+
+  @@unique([tenantId, caseNo])
+  @@index([tenantId, patientId, openedAt])
+  @@index([tenantId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Charge master
+// ---------------------------------------------------------------------------
+
+model ChargeCategory {
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @db.Uuid
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  name       String
+  chargeType ChargeTypeKind
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  charges Charge[]
+
+  @@unique([tenantId, name, chargeType])
+  @@index([tenantId, chargeType])
+}
+
+/// e.g. "per day", "per hour", "per km", "per session"
+model UnitType {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges Charge[]
+
+  @@unique([tenantId, name])
+}
+
+model TaxCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  /// Basis points: 1800 = 18.00%
+  rateBps   Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges Charge[]
+
+  @@unique([tenantId, name])
+}
+
+model Charge {
+  id               String         @id @default(uuid()) @db.Uuid
+  tenantId         String         @db.Uuid
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  chargeCategoryId String         @db.Uuid
+  chargeCategory   ChargeCategory @relation(fields: [chargeCategoryId], references: [id])
+  unitTypeId       String?        @db.Uuid
+  unitType         UnitType?      @relation(fields: [unitTypeId], references: [id])
+  taxCategoryId    String?        @db.Uuid
+  taxCategory      TaxCategory?   @relation(fields: [taxCategoryId], references: [id])
+
+  name                String
+  /// List price in minor units. A visit may bill a different *applied* charge.
+  standardChargeMinor Int
+  description         String?
+  isActive            Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chargeItems ChargeItem[]
+
+  @@unique([tenantId, name, chargeCategoryId])
+  @@index([tenantId, chargeCategoryId])
+}
+
+// ---------------------------------------------------------------------------
+// Clinical vocabulary (tenant-editable) and ICD-10 (global reference data)
+// ---------------------------------------------------------------------------
+
+model SymptomType {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  symptoms Symptom[]
+
+  @@unique([tenantId, name])
+}
+
+model Symptom {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @db.Uuid
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  symptomTypeId String      @db.Uuid
+  symptomType   SymptomType @relation(fields: [symptomTypeId], references: [id])
+  title         String
+  description   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  visitSymptoms VisitSymptom[]
+
+  @@unique([tenantId, symptomTypeId, title])
+  @@index([tenantId])
+}
+
+model Finding {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  category    String?
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  visitFindings VisitFinding[]
+
+  @@unique([tenantId, title])
+  @@index([tenantId, category])
+}
+
+/// Global reference data — not tenant-scoped, no RLS.
+model Icd10Group {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  codes Icd10Code[]
+}
+
+model Icd10Code {
+  id      String     @id @default(uuid()) @db.Uuid
+  groupId String     @db.Uuid
+  group   Icd10Group @relation(fields: [groupId], references: [id])
+  code    String     @unique
+  title   String
+
+  diagnoses VisitDiagnosis[]
+
+  @@index([groupId])
+  @@index([title])
+}
+
+// ---------------------------------------------------------------------------
+// OPD visit
+// ---------------------------------------------------------------------------
+
+model OpdVisit {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  caseId    String  @db.Uuid
+  case      Case    @relation(fields: [caseId], references: [id])
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  practitionerId String       @db.Uuid
+  practitioner   Practitioner @relation(fields: [practitionerId], references: [id])
+
+  appointmentId String?      @unique @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+
+  opdNo   String
+  visitAt DateTime
+
+  isFollowUp    Boolean @default(false)
+  isAntenatal   Boolean @default(false)
+  isLiveConsult Boolean @default(false)
+  reference     String?
+
+  note                 String?
+  previousMedicalIssue String?
+  /// Allergies as stated at this visit; the patient master holds the running record.
+  knownAllergies       String?
+
+  status      OpdVisitStatus @default(waiting)
+  createdById String?        @db.Uuid
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  symptoms      VisitSymptom[]
+  findings      VisitFinding[]
+  diagnoses     VisitDiagnosis[]
+  vitalReadings VitalReading[]
+  chargeItems   ChargeItem[]
+
+  @@unique([tenantId, opdNo])
+  @@index([tenantId, visitAt])
+  @@index([tenantId, practitionerId, visitAt])
+  @@index([tenantId, caseId])
+  @@index([tenantId, status])
+}
+
+model VisitSymptom {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  opdVisitId String   @db.Uuid
+  opdVisit   OpdVisit @relation(fields: [opdVisitId], references: [id], onDelete: Cascade)
+  symptomId  String?  @db.Uuid
+  symptom    Symptom? @relation(fields: [symptomId], references: [id])
+  /// Free text when the symptom isn't in the tenant's vocabulary.
+  title      String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, opdVisitId])
+}
+
+model VisitFinding {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  opdVisitId String   @db.Uuid
+  opdVisit   OpdVisit @relation(fields: [opdVisitId], references: [id], onDelete: Cascade)
+  findingId  String?  @db.Uuid
+  finding    Finding? @relation(fields: [findingId], references: [id])
+  title      String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, opdVisitId])
+}
+
+model VisitDiagnosis {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  opdVisitId  String    @db.Uuid
+  opdVisit    OpdVisit  @relation(fields: [opdVisitId], references: [id], onDelete: Cascade)
+  icd10CodeId String    @db.Uuid
+  icd10Code   Icd10Code @relation(fields: [icd10CodeId], references: [id])
+  isPrimary   Boolean   @default(false)
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([opdVisitId, icd10CodeId])
+  @@index([tenantId, opdVisitId])
+}
+
+// ---------------------------------------------------------------------------
+// Vitals
+// ---------------------------------------------------------------------------
+
+model VitalType {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @db.Uuid
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  name     String
+  unit     String
+  /// Reference range for abnormal flagging. Null means "don't flag".
+  refLow   Float?
+  refHigh  Float?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  readings VitalReading[]
+
+  @@unique([tenantId, name])
+}
+
+model VitalReading {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  patientId   String    @db.Uuid
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  caseId      String?   @db.Uuid
+  case        Case?     @relation(fields: [caseId], references: [id])
+  opdVisitId  String?   @db.Uuid
+  opdVisit    OpdVisit? @relation(fields: [opdVisitId], references: [id])
+  vitalTypeId String    @db.Uuid
+  vitalType   VitalType @relation(fields: [vitalTypeId], references: [id])
+
+  value        Float
+  flag         VitalFlag?
+  recordedAt   DateTime   @default(now())
+  recordedById String?    @db.Uuid
+
+  @@index([tenantId, patientId, recordedAt])
+  @@index([tenantId, opdVisitId])
+}
+
+// ---------------------------------------------------------------------------
+// Billing
+// ---------------------------------------------------------------------------
+
+/// One billed line against a case. Snapshots the charge's name and list price so
+/// later edits to the charge master never rewrite history.
+model ChargeItem {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  caseId     String    @db.Uuid
+  case       Case      @relation(fields: [caseId], references: [id])
+  opdVisitId String?   @db.Uuid
+  opdVisit   OpdVisit? @relation(fields: [opdVisitId], references: [id])
+  chargeId   String?   @db.Uuid
+  charge     Charge?   @relation(fields: [chargeId], references: [id])
+
+  chargeName          String
+  chargeType          ChargeTypeKind
+  quantity            Int            @default(1)
+  standardChargeMinor Int
+  appliedChargeMinor  Int
+  discountBps         Int            @default(0)
+  discountMinor       Int            @default(0)
+  taxBps              Int            @default(0)
+  taxMinor            Int            @default(0)
+  /// (applied * qty) - discount + tax
+  netMinor            Int
+
+  note        String?
+  chargedAt   DateTime @default(now())
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, opdVisitId])
+  @@index([tenantId, chargedAt])
+}
+
+model Payment {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  caseId   String @db.Uuid
+  case     Case   @relation(fields: [caseId], references: [id])
+
+  receiptNo   String
+  amountMinor Int
+  mode        PaymentMode @default(cash)
+  paidAt      DateTime    @default(now())
+  note        String?
+  chequeNo    String?
+  chequeDate  DateTime?   @db.Date
+  documentUrl String?
+
+  /// Set when a payment is reversed; reversals are additive, never deletions.
+  reversedAt     DateTime?
+  reversalReason String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, receiptNo])
+  @@index([tenantId, caseId])
+  @@index([tenantId, paidAt])
+}
+
+// ---------------------------------------------------------------------------
+// Audit — append-only. A migration REVOKEs UPDATE/DELETE for the app DB role.
+// ---------------------------------------------------------------------------
+
 model AuditEvent {
   id         String       @id @default(uuid()) @db.Uuid
   tenantId   String?      @db.Uuid

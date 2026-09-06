@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 export const uuidSchema = z.string().uuid();
 
+/** ISO calendar date, YYYY-MM-DD. */
+export const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected date as YYYY-MM-DD');
+
+/** ISO datetime with offset, e.g. 2026-09-06T09:00:00.000Z */
+export const isoDateTimeSchema = z.string().datetime({ offset: true });
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
