@@ -164,6 +164,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'vocabulary:read',
     'vocabulary:manage',
     'practitioner:read',
+    // Needed to pick what to order — order:create without it is unusable.
+    'service:read',
     'bill:read',
     'bill:create',
     'order:create',

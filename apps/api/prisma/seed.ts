@@ -59,8 +59,9 @@ async function main(): Promise<void> {
   console.log('  Login:    %s', DEMO.adminEmail);
   console.log('  Password: %s', DEMO.adminPassword);
   console.log(
-    '  Staff:    doctor@ / receptionist@ / accountant@ / nurse@demo-hospital.test',
+    '  Staff:    doctor@ / receptionist@ / accountant@ / nurse@ /',
   );
+  console.log('            pathologist@ / radiologist@demo-hospital.test');
   console.log('            all with password: %s', DEMO.staffPassword);
   console.log('  ^ change these before deploying anywhere real.\n');
 }
@@ -136,6 +137,23 @@ async function seedUsers(tenantId: string): Promise<void> {
     'Rabia',
     'Noor',
     'nurse',
+    DEMO.staffPassword,
+  );
+  // Department staff — without these nobody can open the lab/imaging worklist.
+  await ensureUser(
+    tenantId,
+    'pathologist@demo-hospital.test',
+    'Imran',
+    'Bhatti',
+    'pathologist',
+    DEMO.staffPassword,
+  );
+  await ensureUser(
+    tenantId,
+    'radiologist@demo-hospital.test',
+    'Nadia',
+    'Farooq',
+    'radiologist',
     DEMO.staffPassword,
   );
 }
