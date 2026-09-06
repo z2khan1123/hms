@@ -1,68 +1,101 @@
 # Roadmap
 
-## Phase 0 — Foundation (this scaffold)
+Revised 2026-09-06 after benchmarking against Smart Hospital — see
+[`competitive-analysis.md`](competitive-analysis.md) for the feature inventory this is scoped
+against.
 
-- [x] Monorepo, workspaces, shared package
-- [x] Local infra (Postgres, Redis, Adminer, Mailhog)
+Each phase is ordered to end with something sellable, not with a half-finished layer.
+
+## Phase 0 — Foundation (done)
+
+- [x] Monorepo, workspaces, shared package (zod schemas + RBAC matrix)
 - [x] API skeleton: config validation, Prisma, tenant context, RBAC guard, audit interceptor
-- [x] Web skeleton: routing, API client, auth context, query client
-- [x] Docs: architecture, data model, compliance, security
-- [ ] `npm install`, first migration, seed verified on a dev machine
-- [ ] CI green (lint, typecheck, test, build)
+- [x] Web skeleton: routing, API client with token refresh, auth context
+- [x] Postgres on Neon; initial migration applied; seed data
+- [x] End-to-end verified: login, patient list, appointment booking, status transitions
+- [ ] CI green on a real push
+- [ ] Postgres RLS migration + a test proving cross-tenant isolation
 
-## Phase 1 — MVP: registration + appointments
+## Phase 1 — Front desk and outpatient clinic (months 0–3)
 
-- [ ] Auth: register/login/refresh/logout, throttling, password reset via email
-- [ ] Patients: create, search (name/MRN/phone), view, edit, soft-delete; MRN generator
-- [ ] Practitioners: CRUD, weekly schedule templates
-- [ ] Appointments: slot generation from schedules, book, reschedule, cancel,
-      arrive/fulfil/no-show; overlap prevention
-- [ ] Appointment calendar (day/week) and patient timeline in the web app
-- [ ] Audit log viewer for `hospital_admin`
-- [ ] Postgres RLS migration + tests proving cross-tenant isolation
-- [ ] Seed with synthetic Pakistani demographic data
-- [ ] E2E happy-path tests
+**Sellable as:** a complete system for a single-doctor or small outpatient clinic.
 
-## Phase 2 — Compliance & hardening
+- [ ] Patient master completed to full field set — guardian, CNIC, marital status, blood
+      group, photo, allergies, remarks, alternate number, TPA membership
+- [ ] MRN generator per tenant; patient bulk import; enable/disable
+- [ ] **Case ID spine** — cases own visits, charges, investigations and payments
+- [ ] OPD visit: symptoms, findings, ICD-10 diagnosis, notes, previous medical issue
+- [ ] Charge master: charge → category → type → unit → tax category; standard vs applied charge
+- [ ] Per-visit charges, payments (cash/cheque/bank/online), receipts with print header/footer
+- [ ] Scheduling engine: availability templates, service durations, resource booking
+- [ ] OPD token queue + waiting-room display
+- [ ] Urdu/RTL plumbing (translation ships Phase 2); PKR formatting
+- [ ] Role set expanded to match the nine clinical roles
 
-- [ ] MFA (TOTP)
-- [ ] Consent capture + data-subject export / erasure (anonymise)
-- [ ] Break-glass access flow
-- [ ] Appointment exclusion constraint (`tstzrange` + `btree_gist`)
-- [ ] Audit events shipped to external retention-locked sink
-- [ ] Rate-limit tuning, anomaly alerting
-- [ ] Terraform for staging + prod; secret manager wiring
-- [ ] Backup/restore drill; incident-response runbook
-- [ ] Third-party penetration test
+## Phase 2 — Inpatient and the clinical record (months 3–6)
 
-## Phase 3 — Clinical core
+**Sellable as:** a working system for a 20–80 bed hospital.
 
-- [ ] Encounters / visits, clinical notes, problem list
-- [ ] Orders (labs, imaging, meds) and results
-- [ ] Coding: ICD-10, SNOMED CT, LOINC lookups
-- [ ] Document/scan storage (S3-compatible, encrypted)
-- [ ] Notifications: SMS (appointment reminders — big value in PK), email
+- [ ] Floor → ward → bed type → bed hierarchy; live bed board; bed history
+- [ ] Admission, transfer, discharge, discharge revert; discharge summary
+- [ ] Nurse notes, consultant register
+- [ ] Vitals with reference ranges and abnormal flagging
+- [ ] Medication administration record
+- [ ] **Prescribing with allergy + drug-interaction checks**, block-with-logged-override
+- [ ] Operation theatre: catalogue, categories, scheduling
+- [ ] Antenatal / obstetric history
+- [ ] MFA (TOTP), break-glass access flow, consent capture
+- [ ] Urdu translation shipped
 
-## Phase 4 — Revenue & operations
+## Phase 3 — Diagnostics and pharmacy (months 6–9)
 
-- [ ] Billing: charge capture, invoices, receipts, payments
-- [ ] Insurance / panel claims
-- [ ] Pharmacy + inventory
-- [ ] Bed / ward management, admissions, discharge
-- [ ] Reporting dashboards
+**Sellable as:** the three highest-revenue departments in one system.
 
-## Phase 5 — Interoperability & scale
+- [ ] Pathology: test catalogue, categories, parameters with units and reference ranges,
+      sample collection, result entry, report templates, billing
+- [ ] Radiology: same shape; report templates
+- [ ] Pharmacy: medicine master, categories, groups, companies, units, dosage/interval/duration
+- [ ] Batch and expiry tracking; expiry reporting; bad stock
+- [ ] Purchase and purchase return; suppliers
+- [ ] Dispensing against prescriptions; pharmacy billing
 
-- [ ] HL7 FHIR R4 facade (read, then write)
-- [ ] HL7 v2 ingest for lab/device integrations
-- [ ] Keycloak / OIDC migration for SSO + federation
-- [ ] BullMQ worker process for async jobs
-- [ ] Per-tenant DB split path for large hospitals
-- [ ] DICOM / PACS integration for imaging
+## Phase 4 — Revenue cycle and back office (months 9–12)
+
+**Sellable as:** a full hospital operating system.
+
+- [ ] Consolidated billing across all modules against the Case ID
+- [ ] TPA / insurance registry, negotiated charges, claims
+- [ ] Referral registry, commission rules, payouts
+- [ ] Income and expense ledgers with heads
+- [ ] HR: staff, departments, designations, specialities, attendance (incl. QR), duty roster,
+      leave, payroll, payslips
+- [ ] General inventory: items, categories, stores, suppliers, stock, issue
+- [ ] **Analytics layer** — saved views, scheduled delivery, export (replaces hardcoded reports)
+
+## Phase 5 — Ancillary services and platform (month 12+)
+
+**Sellable as:** feature parity plus the differentiators.
+
+- [ ] Blood bank: donors, stock by group, components, issue, component issue
+- [ ] Ambulance: vehicle registry, call dispatch, emergency level, billing
+- [ ] Birth and death registers with statutory print formats
+- [ ] Front office: visitor book, call log, postal in/out, complaints
+- [ ] Patient portal + mobile app; patient ID cards
+- [ ] Public REST API + webhooks
+- [ ] **HL7 FHIR R4 façade** (read, then write)
+- [ ] Offline-tolerant front desk (registration, billing, vitals queue and sync)
+- [ ] Custom-field builder
+- [ ] Per-tenant database split path for large hospitals
+
+## Explicitly out of scope
+
+Front CMS, internal chat, survey form builder, download centre, personal to-do list, generic
+certificate builder. Video consultation is integrated, not built.
 
 ## Cross-cutting, ongoing
 
-- Accessibility (WCAG 2.2 AA) and Urdu localisation
+- Accessibility (WCAG 2.2 AA)
 - Performance budgets on the web app
 - Dependency and container image scanning
+- Third-party penetration test before real patient data
 - Runbooks and on-call
