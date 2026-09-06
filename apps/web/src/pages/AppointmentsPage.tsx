@@ -44,7 +44,9 @@ export function AppointmentsPage() {
   });
 
   const patients = useQuery({
-    queryKey: ['patients', '', 1],
+    // Distinct from the paginated ['patients', q, page] list query — this one
+    // returns a flat array for name lookup, so it must not share a cache key.
+    queryKey: ['patients', 'lookup'],
     queryFn: async () => {
       const { data } = await api.get<Paginated<Patient>>('/patients', {
         params: { pageSize: 100 },
