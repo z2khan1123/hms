@@ -11,7 +11,10 @@ import { AppointmentNewPage } from './pages/AppointmentNewPage';
 import { OpdListPage } from './pages/OpdListPage';
 import { OpdNewPage } from './pages/OpdNewPage';
 import { OpdVisitPage } from './pages/OpdVisitPage';
+import { DoctorQueuePage } from './pages/DoctorQueuePage';
 import { CaseBillingPage } from './pages/CaseBillingPage';
+import { CashierPage } from './pages/CashierPage';
+import { DepartmentWorklistPage } from './pages/DepartmentWorklistPage';
 import { ServicesPage } from './pages/ServicesPage';
 
 export default function App() {
@@ -35,6 +38,9 @@ export default function App() {
         <Route path="opd" element={<OpdListPage />} />
         <Route path="opd/new" element={<OpdNewPage />} />
         <Route path="opd/:id" element={<OpdVisitPage />} />
+        <Route path="queue" element={<DoctorQueuePage />} />
+        <Route path="billing/pending" element={<CashierPage />} />
+        <Route path="worklist" element={<DepartmentWorklistPage />} />
         <Route path="cases/:id/billing" element={<CaseBillingPage />} />
         <Route path="setup/services" element={<ServicesPage />} />
       </Route>

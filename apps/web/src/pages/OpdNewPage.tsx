@@ -22,6 +22,7 @@ import {
   draftForService,
   emptyBillLineDraft,
   num,
+  priceMinorOf,
   type BillLineDraft,
 } from '../lib/bill-line';
 import { blankToUndefined, formatDateTime, fullName, localInputToIso, toLocalInput } from '../lib/format';
@@ -110,15 +111,40 @@ export function OpdNewPage() {
     },
   });
 
+  const selectedPractitioner = practitioners.data?.find((p) => p.id === practitionerId);
+  const feeMinor = selectedPractitioner?.consultationFeeMinor ?? null;
+
   // --- billed item -------------------------------------------------------------
   const [billItem, setBillItem] = useState(true);
   const [service, setService] = useState<Service | null>(null);
   const [typedName, setTypedName] = useState('');
   const [itemDraft, setItemDraft] = useState<BillLineDraft>(emptyBillLineDraft);
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [discountReason, setDiscountReason] = useState('');
 
   const hasItem = Boolean(service) || typedName.trim() !== '';
   const itemTotals = useMemo(() => billLineTotals(itemDraft), [itemDraft]);
   const netMinor = billItem && hasItem ? itemTotals.netMinor : 0;
+
+  // The doctor's fee appears automatically when a practitioner is picked and
+  // pre-fills the price — but stays editable, so a doctor can concede it.
+  useEffect(() => {
+    if (feeMinor == null || service || priceTouched) return;
+    setItemDraft((d) => ({ ...d, priceMajor: String(toMajor(feeMinor)) }));
+    setTypedName((n) => (n.trim() ? n : 'Consultation fee'));
+  }, [feeMinor, service, priceTouched]);
+
+  const handleItemDraftChange = (next: BillLineDraft) => {
+    if (next.priceMajor !== itemDraft.priceMajor) setPriceTouched(true);
+    setItemDraft(next);
+  };
+
+  // A typed price under the doctor's fee is a concession — capture why.
+  const belowFee =
+    billItem &&
+    hasItem &&
+    feeMinor != null &&
+    priceMinorOf(itemDraft) < feeMinor;
 
   // --- payment -------------------------------------------------------------
   const [takePayment, setTakePayment] = useState(false);
@@ -188,6 +214,11 @@ export function OpdNewPage() {
               serviceId: service?.id,
               serviceName: service ? undefined : typedName.trim(),
               ...billLinePayload(itemDraft),
+              // Only meaningful when the fee was conceded; the API records it
+              // against the bill line so a concession is never anonymous.
+              discountReason: belowFee
+                ? blankToUndefined(discountReason)
+                : undefined,
             }
           : undefined,
       payment: takePayment
@@ -210,6 +241,7 @@ export function OpdNewPage() {
       );
       return;
     }
+
     mutation.mutate(parsed.data);
   }
 
@@ -472,6 +504,8 @@ export function OpdNewPage() {
                       setService(null);
                       setTypedName('');
                       setItemDraft(emptyBillLineDraft);
+                      setPriceTouched(false);
+                      setDiscountReason('');
                     }}
                   >
                     Change
@@ -493,12 +527,38 @@ export function OpdNewPage() {
                 />
               )}
 
+              {feeMinor != null && (
+                <p className="hint" style={{ marginTop: 4 }}>
+                  {selectedPractitioner ? fullName(selectedPractitioner) : 'This doctor'}
+                  ’s consultation fee is {formatMoney(feeMinor)} — pre-filled below and
+                  still editable.
+                </p>
+              )}
+
               {hasItem && (
-                <BillLineFields
-                  draft={itemDraft}
-                  onChange={setItemDraft}
-                  suggestedPriceMinor={service?.defaultPriceMinor ?? null}
-                />
+                <>
+                  <BillLineFields
+                    draft={itemDraft}
+                    onChange={handleItemDraftChange}
+                    suggestedPriceMinor={service?.defaultPriceMinor ?? feeMinor}
+                  />
+                  {belowFee && (
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <label htmlFor="discountReason">
+                        Reason for the reduced fee (optional)
+                      </label>
+                      <input
+                        id="discountReason"
+                        value={discountReason}
+                        onChange={(e) => setDiscountReason(e.target.value)}
+                        placeholder="e.g. staff family, hardship waiver"
+                      />
+                      <span className="hint">
+                        The typed price is below {formatMoney(feeMinor ?? 0)}.
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

@@ -21,8 +21,10 @@ import { CasesModule } from './modules/cases/cases.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
+import { OrdersModule } from './modules/orders/orders.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
 import { PractitionersModule } from './modules/practitioners/practitioners.module.js';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module.js';
 import { TpaModule } from './modules/tpa/tpa.module.js';
 import { VitalsModule } from './modules/vitals/vitals.module.js';
 import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
@@ -62,6 +64,8 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     CasesModule,
     BillingModule,
     OpdModule,
+    OrdersModule,
+    PrescriptionsModule,
     VitalsModule,
   ],
   providers: [

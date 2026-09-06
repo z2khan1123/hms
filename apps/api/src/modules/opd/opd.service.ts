@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type BillItem } from '@prisma/client';
 import type {
   CreateOpdVisitInput,
   OpdScope,
@@ -20,10 +20,12 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { BillingService } from '../billing/billing.service.js';
 import { CasesService } from '../cases/cases.service.js';
 import {
+  EMPTY_STAGE_COUNTS,
   opdVisitDetailInclude,
   opdVisitListInclude,
   toOpdVisitDto,
   toOpdVisitListItem,
+  type VisitStageCounts,
 } from './opd.mapper.js';
 
 export interface OpdListFilter {
@@ -35,8 +37,13 @@ export interface OpdListFilter {
   q?: string;
 }
 
-/** waiting -> in_consultation -> completed, and cancellation off either live state. */
+/**
+ * registered -> waiting (fee settled) -> in_consultation -> completed, and
+ * cancellation off any live state. The registered -> waiting hop also happens
+ * automatically when a payment settles the consultation line.
+ */
 const ALLOWED_TRANSITIONS: Record<OpdVisitStatus, OpdVisitStatus[]> = {
+  registered: ['waiting', 'cancelled'],
   waiting: ['in_consultation', 'cancelled'],
   in_consultation: ['completed', 'cancelled'],
   completed: [],
@@ -68,7 +75,7 @@ export class OpdService {
     const visitId = await this.prisma.$transaction(async (tx) => {
       const practitioner = await tx.practitioner.findFirst({
         where: { id: input.practitionerId, tenantId, isActive: true },
-        select: { id: true },
+        select: { id: true, consultationFeeMinor: true },
       });
       if (!practitioner) throw new BadRequestException('Unknown practitioner');
 
@@ -110,6 +117,9 @@ export class OpdService {
           note: input.note ?? null,
           previousMedicalIssue: input.previousMedicalIssue ?? null,
           knownAllergies: input.knownAllergies ?? null,
+          // The desk registers the patient; the fee is not settled yet. A payment
+          // that covers the consultation line flips this to `waiting`.
+          status: 'registered',
           createdById,
         },
       });
@@ -118,22 +128,43 @@ export class OpdService {
         await this.replaceSymptoms(tx, tenantId, visit.id, input.symptoms);
       }
 
+      let consultationItem: BillItem | undefined;
       if (input.item) {
-        await this.billing.addBillItemInTx(tx, tenantId, createdById, {
-          caseId: kase.id,
-          opdVisitId: visit.id,
-          serviceId: input.item.serviceId,
-          serviceName: input.item.serviceName,
-          priceMinor: input.item.priceMinor,
-          quantity: input.item.quantity,
-          discountBps: input.item.discountBps,
-          discountMinor: input.item.discountMinor,
-        });
+        // The fee comes from the doctor. An OMITTED price means "charge his
+        // fee"; an explicit 0 means a deliberately free consultation and must
+        // survive — which is why the contract makes priceMinor optional rather
+        // than defaulting it to 0.
+        const priceMinor =
+          input.item.priceMinor ?? practitioner.consultationFeeMinor ?? 0;
+        consultationItem = await this.billing.addBillItemInTx(
+          tx,
+          tenantId,
+          createdById,
+          {
+            caseId: kase.id,
+            opdVisitId: visit.id,
+            serviceId: input.item.serviceId,
+            serviceName: input.item.serviceName,
+            priceMinor,
+            quantity: input.item.quantity,
+            discountBps: input.item.discountBps,
+            discountMinor: input.item.discountMinor,
+            discountReason: input.item.discountReason ?? null,
+          },
+        );
       }
 
       if (input.payment) {
+        // When the money taken at the desk exactly settles the consultation line,
+        // allocate it to that line so the visit advances to `waiting`.
+        const billItemIds =
+          consultationItem &&
+          input.payment.amountMinor === consultationItem.netMinor
+            ? [consultationItem.id]
+            : undefined;
         await this.billing.createPaymentInTx(tx, tenantId, createdById, {
           caseId: kase.id,
+          billItemIds,
           amountMinor: input.payment.amountMinor,
           mode: input.payment.mode,
           note: input.payment.note,
@@ -189,7 +220,13 @@ export class OpdService {
       orderBy: { visitAt: filter.scope === 'upcoming' ? 'asc' : 'desc' },
       take: LIST_LIMIT,
     });
-    return rows.map(toOpdVisitListItem);
+    const counts = await this.loadStageCounts(
+      tenantId,
+      rows.map((r) => ({ id: r.id, caseId: r.caseId })),
+    );
+    return rows.map((v) =>
+      toOpdVisitListItem(v, counts.get(v.id) ?? EMPTY_STAGE_COUNTS),
+    );
   }
 
   async get(tenantId: string, id: string): Promise<OpdVisitDto> {
@@ -198,7 +235,71 @@ export class OpdService {
       include: opdVisitDetailInclude,
     });
     if (!found) throw new NotFoundException('OPD visit not found');
-    return toOpdVisitDto(found);
+    const counts = await this.loadStageCounts(tenantId, [
+      { id: found.id, caseId: found.caseId },
+    ]);
+    return toOpdVisitDto(found, counts.get(found.id) ?? EMPTY_STAGE_COUNTS);
+  }
+
+  /**
+   * The counts `computeVisitStage` needs, resolved with two grouped queries for
+   * the whole page rather than per row: pending (unreleased) bill lines per
+   * case, and `ordered` / `in_progress` service orders per visit.
+   */
+  private async loadStageCounts(
+    tenantId: string,
+    visits: { id: string; caseId: string }[],
+  ): Promise<Map<string, VisitStageCounts>> {
+    const result = new Map<string, VisitStageCounts>();
+    if (visits.length === 0) return result;
+
+    const visitIds = visits.map((v) => v.id);
+    const caseIds = [...new Set(visits.map((v) => v.caseId))];
+
+    const [pendingByCase, ordersByVisit] = await Promise.all([
+      this.prisma.billItem.groupBy({
+        by: ['caseId'],
+        where: {
+          tenantId,
+          caseId: { in: caseIds },
+          status: 'pending',
+          approvedWithoutPayment: false,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.serviceOrder.groupBy({
+        by: ['opdVisitId', 'status'],
+        where: {
+          tenantId,
+          opdVisitId: { in: visitIds },
+          status: { in: ['ordered', 'in_progress'] },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const unpaidByCase = new Map(
+      pendingByCase.map((r) => [r.caseId, r._count._all]),
+    );
+    const orderedByVisit = new Map<string, number>();
+    const inProgressByVisit = new Map<string, number>();
+    for (const r of ordersByVisit) {
+      if (!r.opdVisitId) continue;
+      if (r.status === 'ordered') {
+        orderedByVisit.set(r.opdVisitId, r._count._all);
+      } else if (r.status === 'in_progress') {
+        inProgressByVisit.set(r.opdVisitId, r._count._all);
+      }
+    }
+
+    for (const v of visits) {
+      result.set(v.id, {
+        unpaidItemCount: unpaidByCase.get(v.caseId) ?? 0,
+        orderedCount: orderedByVisit.get(v.id) ?? 0,
+        inProgressCount: inProgressByVisit.get(v.id) ?? 0,
+      });
+    }
+    return result;
   }
 
   /**

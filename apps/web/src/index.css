@@ -108,6 +108,20 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .badge-flag-low, .badge-flag-high { background: var(--danger-bg); color: var(--danger); }
 .badge-flag-normal { background: var(--ok-bg); color: var(--ok); }
 
+/* visit-stage badges — the stage is sent by the server, never recomputed here */
+.badge-registered { background: #eef1f5; color: var(--muted); }
+.badge-waiting_for_doctor { background: var(--warn-bg); color: var(--warn); }
+.badge-payment_pending { background: var(--warn-bg); color: var(--warn); }
+.badge-tests_in_progress { background: var(--info-bg); color: var(--primary); }
+.badge-tests_recommended { background: var(--info-bg); color: var(--primary); }
+
+/* service-order work-state badges */
+.badge-ordered { background: var(--warn-bg); color: var(--warn); }
+.badge-in_progress { background: var(--info-bg); color: var(--primary); }
+
+/* worklist blocked-row explanation */
+.blocked-note { color: var(--danger); font-size: 12px; display: block; margin-top: 4px; }
+
 /* layout helpers */
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

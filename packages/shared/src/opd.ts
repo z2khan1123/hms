@@ -5,6 +5,7 @@ import { practitionerSchema } from './practitioner.js';
 import { caseBalanceSchema } from './case.js';
 
 export const opdVisitStatusSchema = z.enum([
+  'registered',
   'waiting',
   'in_consultation',
   'completed',
@@ -13,11 +14,64 @@ export const opdVisitStatusSchema = z.enum([
 export type OpdVisitStatus = z.infer<typeof opdVisitStatusSchema>;
 
 export const OPD_STATUS_LABELS: Record<OpdVisitStatus, string> = {
+  registered: 'Registered',
   waiting: 'Waiting',
   in_consultation: 'In consultation',
   completed: 'Completed',
   cancelled: 'Cancelled',
 };
+
+// --- patient flow stage ----------------------------------------------------
+
+/**
+ * What the front desk actually wants to see. Only the four hard states live in
+ * the database; everything after the consultation is DERIVED from the orders and
+ * the bill, because a stored "Payment Pending" would keep saying that after the
+ * patient has paid. Derived status cannot drift.
+ */
+export const visitStageSchema = z.enum([
+  'registered',
+  'waiting_for_doctor',
+  'in_consultation',
+  'payment_pending',
+  'tests_in_progress',
+  'tests_recommended',
+  'completed',
+  'cancelled',
+]);
+export type VisitStage = z.infer<typeof visitStageSchema>;
+
+export const VISIT_STAGE_LABELS: Record<VisitStage, string> = {
+  registered: 'Registered',
+  waiting_for_doctor: 'Waiting for doctor',
+  in_consultation: 'In consultation',
+  payment_pending: 'Payment pending',
+  tests_in_progress: 'Tests in progress',
+  tests_recommended: 'Tests recommended',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+export interface VisitStageInput {
+  status: OpdVisitStatus;
+  /** Bill lines on this case still awaiting payment or approval. */
+  unpaidItemCount: number;
+  orderedCount: number;
+  inProgressCount: number;
+}
+
+export function computeVisitStage(input: VisitStageInput): VisitStage {
+  if (input.status === 'cancelled') return 'cancelled';
+  if (input.status === 'registered') return 'registered';
+  if (input.status === 'waiting') return 'waiting_for_doctor';
+  if (input.status === 'in_consultation') return 'in_consultation';
+
+  // Consultation is done; the rest of the journey is money and departments.
+  if (input.unpaidItemCount > 0) return 'payment_pending';
+  if (input.inProgressCount > 0) return 'tests_in_progress';
+  if (input.orderedCount > 0) return 'tests_recommended';
+  return 'completed';
+}
 
 // --- clinical vocabulary ---------------------------------------------------
 
@@ -117,10 +171,17 @@ export const createOpdVisitSchema = z.object({
     .object({
       serviceId: z.string().uuid().optional(),
       serviceName: z.string().trim().min(1).max(160).optional(),
-      priceMinor: z.number().int().min(0),
+      /**
+       * Omit to charge the selected doctor's consultation fee. An explicit `0`
+       * means a deliberately free consultation and must NOT be overridden —
+       * that distinction is why this is optional rather than defaulted to 0.
+       */
+      priceMinor: z.number().int().min(0).optional(),
       quantity: z.number().int().min(1).max(999).optional(),
       discountBps: z.number().int().min(0).max(10_000).optional(),
       discountMinor: z.number().int().min(0).optional(),
+      /** Why the fee was conceded. Recorded against the bill line. */
+      discountReason: z.string().trim().max(500).optional(),
     })
     .refine((v) => !!v.serviceId || !!v.serviceName, {
       message: 'Pick a service or enter a name',
@@ -174,6 +235,11 @@ export const opdVisitListItemSchema = z.object({
   netChargedMinor: z.number().int(),
   paidMinor: z.number().int(),
   balanceMinor: z.number().int(),
+
+  stage: visitStageSchema,
+  unpaidItemCount: z.number().int(),
+  orderedCount: z.number().int(),
+  inProgressCount: z.number().int(),
 });
 export type OpdVisitListItem = z.infer<typeof opdVisitListItemSchema>;
 

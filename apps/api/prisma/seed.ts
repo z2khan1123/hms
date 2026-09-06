@@ -141,14 +141,44 @@ async function seedUsers(tenantId: string): Promise<void> {
 }
 
 async function seedPractitioners(tenantId: string): Promise<void> {
-  if ((await prisma.practitioner.count({ where: { tenantId } })) > 0) return;
-  await prisma.practitioner.createMany({
-    data: [
-      { tenantId, firstName: 'Ayesha', lastName: 'Khan', specialty: 'General Medicine' },
-      { tenantId, firstName: 'Bilal', lastName: 'Ahmed', specialty: 'Pediatrics' },
-      { tenantId, firstName: 'Sana', lastName: 'Malik', specialty: 'Cardiology' },
-    ],
-  });
+  const practitioners: {
+    firstName: string;
+    lastName: string;
+    specialty: string;
+    consultationFeeMinor: number;
+  }[] = [
+    {
+      firstName: 'Ayesha',
+      lastName: 'Khan',
+      specialty: 'General Medicine',
+      consultationFeeMinor: 150000,
+    },
+    {
+      firstName: 'Bilal',
+      lastName: 'Ahmed',
+      specialty: 'Pediatrics',
+      consultationFeeMinor: 200000,
+    },
+    {
+      firstName: 'Sana',
+      lastName: 'Malik',
+      specialty: 'Cardiology',
+      consultationFeeMinor: 300000,
+    },
+  ];
+  for (const p of practitioners) {
+    const found = await prisma.practitioner.findFirst({
+      where: { tenantId, firstName: p.firstName, lastName: p.lastName },
+    });
+    if (found) {
+      await prisma.practitioner.update({
+        where: { id: found.id },
+        data: { consultationFeeMinor: p.consultationFeeMinor },
+      });
+    } else {
+      await prisma.practitioner.create({ data: { tenantId, ...p } });
+    }
+  }
 }
 
 async function seedPatients(tenantId: string): Promise<void> {
@@ -222,6 +252,13 @@ async function seedServices(tenantId: string): Promise<void> {
     { name: 'Nebulisation', department: 'procedure', defaultPriceMinor: 60000 },
     { name: 'ECG', department: 'procedure', defaultPriceMinor: 120000 },
     { name: 'Stitch Removal', department: 'procedure', defaultPriceMinor: 40000 },
+    // Lab and imaging — so a doctor's order has something to reference.
+    { name: 'CBC', department: 'laboratory', defaultPriceMinor: 80000 },
+    { name: 'Blood Sugar Fasting', department: 'laboratory', defaultPriceMinor: 40000 },
+    { name: 'Urine R/E', department: 'laboratory', defaultPriceMinor: 35000 },
+    { name: 'LFT', department: 'laboratory', defaultPriceMinor: 150000 },
+    { name: 'Chest X-Ray', department: 'radiology', defaultPriceMinor: 120000 },
+    { name: 'Ultrasound Abdomen', department: 'radiology', defaultPriceMinor: 250000 },
   ];
   for (const s of services) {
     const found = await prisma.service.findFirst({

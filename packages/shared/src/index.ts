@@ -10,4 +10,6 @@ export * from './case.js';
 export * from './services.js';
 export * from './opd.js';
 export * from './billing.js';
+export * from './orders.js';
+export * from './prescription.js';
 export * from './vitals.js';

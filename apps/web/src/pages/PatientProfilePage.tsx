@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   CASE_STATUS_LABELS,
   OPD_STATUS_LABELS,
+  VISIT_STAGE_LABELS,
   formatMoney,
   type Case,
   type OpdVisitListItem,
@@ -251,6 +252,7 @@ export function PatientProfilePage() {
                     <th>Practitioner</th>
                     <th>Case</th>
                     <th>Status</th>
+                    <th>Stage</th>
                     <th className="num">Balance</th>
                   </tr>
                 </thead>
@@ -266,12 +268,15 @@ export function PatientProfilePage() {
                       <td>
                         <StatusBadge status={v.status} label={OPD_STATUS_LABELS[v.status]} />
                       </td>
+                      <td>
+                        <StatusBadge status={v.stage} label={VISIT_STAGE_LABELS[v.stage]} />
+                      </td>
                       <td className="num">{formatMoney(v.balanceMinor)}</td>
                     </tr>
                   ))}
                   {visits.data.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={7} className="muted">
                         No visits yet.
                       </td>
                     </tr>

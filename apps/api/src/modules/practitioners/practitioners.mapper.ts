@@ -7,6 +7,8 @@ export function toPractitionerDto(p: Practitioner): PractitionerDto {
     firstName: p.firstName,
     lastName: p.lastName,
     specialty: p.specialty,
+    department: p.department,
+    consultationFeeMinor: p.consultationFeeMinor,
     isActive: p.isActive,
   };
 }

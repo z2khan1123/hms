@@ -1,8 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
+import { useCan } from '../lib/permissions';
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const can = useCan();
   const navigate = useNavigate();
 
   return (
@@ -13,6 +15,9 @@ export function Layout() {
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/appointments">Appointments</NavLink>
           <NavLink to="/opd">OPD</NavLink>
+          {can('opd:read') && <NavLink to="/queue">Queue</NavLink>}
+          {can('payment:create') && <NavLink to="/billing/pending">Billing</NavLink>}
+          {can('order:update') && <NavLink to="/worklist">Worklist</NavLink>}
           <NavLink to="/setup/services">Setup</NavLink>
         </nav>
         <div className="spacer" />

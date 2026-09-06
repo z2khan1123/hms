@@ -72,6 +72,9 @@ enum CaseStatus {
 }
 
 enum OpdVisitStatus {
+  /// Created at the desk; the consultation fee is not settled yet.
+  registered
+  /// Fee settled — the patient is in the doctor's queue.
   waiting
   in_consultation
   completed
@@ -98,6 +101,23 @@ enum ServiceDepartment {
   inpatient
   ambulance
   other
+}
+
+/// Money state of one bill line. Independent of whether the work was done.
+enum BillItemStatus {
+  pending
+  paid
+  cancelled
+  refunded
+}
+
+/// Work state of a doctor's order. Whether it may START is decided by the
+/// linked bill item (paid, or approved without payment) — never duplicated here.
+enum ServiceOrderStatus {
+  ordered
+  in_progress
+  completed
+  cancelled
 }
 
 enum VitalFlag {
@@ -138,21 +158,23 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  patients      Patient[]
-  practitioners Practitioner[]
-  appointments  Appointment[]
-  tpas          Tpa[]
-  cases         Case[]
-  opdVisits     OpdVisit[]
-  services      Service[]
-  billItems     BillItem[]
-  payments      Payment[]
-  symptomTypes  SymptomType[]
-  symptoms      Symptom[]
-  findings      Finding[]
-  vitalTypes    VitalType[]
-  vitalReadings VitalReading[]
+  users             User[]
+  patients          Patient[]
+  practitioners     Practitioner[]
+  appointments      Appointment[]
+  tpas              Tpa[]
+  cases             Case[]
+  opdVisits         OpdVisit[]
+  services          Service[]
+  billItems         BillItem[]
+  payments          Payment[]
+  symptomTypes      SymptomType[]
+  symptoms          Symptom[]
+  findings          Finding[]
+  vitalTypes        VitalType[]
+  vitalReadings     VitalReading[]
+  serviceOrders     ServiceOrder[]
+  prescriptionItems PrescriptionItem[]
 }
 
 model User {
@@ -255,6 +277,7 @@ model Patient {
   cases         Case[]
   opdVisits     OpdVisit[]
   vitalReadings VitalReading[]
+  serviceOrders ServiceOrder[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
@@ -263,16 +286,19 @@ model Patient {
 }
 
 model Practitioner {
-  id         String  @id @default(uuid()) @db.Uuid
-  tenantId   String  @db.Uuid
-  tenant     Tenant  @relation(fields: [tenantId], references: [id])
-  userId     String? @unique @db.Uuid
-  user       User?   @relation(fields: [userId], references: [id])
-  firstName  String
-  lastName   String
-  specialty  String?
-  department String?
-  isActive   Boolean @default(true)
+  id                   String  @id @default(uuid()) @db.Uuid
+  tenantId             String  @db.Uuid
+  tenant               Tenant  @relation(fields: [tenantId], references: [id])
+  userId               String? @unique @db.Uuid
+  user                 User?   @relation(fields: [userId], references: [id])
+  firstName            String
+  lastName             String
+  specialty            String?
+  department           String?
+  /// The doctor's consultation fee. Pre-fills the charge at registration and is
+  /// always editable — a doctor may concede a fee for a particular patient.
+  consultationFeeMinor Int?
+  isActive             Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -342,6 +368,7 @@ model Case {
   billItems     BillItem[]
   payments      Payment[]
   vitalReadings VitalReading[]
+  serviceOrders ServiceOrder[]
 
   @@unique([tenantId, caseNo])
   @@index([tenantId, patientId, openedAt])
@@ -375,7 +402,8 @@ model Service {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  billItems BillItem[]
+  billItems     BillItem[]
+  serviceOrders ServiceOrder[]
 
   @@unique([tenantId, name])
   @@index([tenantId, department])
@@ -494,11 +522,13 @@ model OpdVisit {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  symptoms      VisitSymptom[]
-  findings      VisitFinding[]
-  diagnoses     VisitDiagnosis[]
-  vitalReadings VitalReading[]
-  billItems     BillItem[]
+  symptoms          VisitSymptom[]
+  findings          VisitFinding[]
+  diagnoses         VisitDiagnosis[]
+  vitalReadings     VitalReading[]
+  billItems         BillItem[]
+  serviceOrders     ServiceOrder[]
+  prescriptionItems PrescriptionItem[]
 
   @@unique([tenantId, opdNo])
   @@index([tenantId, visitAt])
@@ -548,6 +578,76 @@ model VisitDiagnosis {
   createdAt   DateTime  @default(now())
 
   @@unique([opdVisitId, icd10CodeId])
+  @@index([tenantId, opdVisitId])
+}
+
+// ---------------------------------------------------------------------------
+// Doctor's orders and prescriptions
+// ---------------------------------------------------------------------------
+
+/// A service the doctor recommended — a lab test, an X-ray, a procedure.
+/// It carries the CLINICAL life of the request. Whether it may start is decided
+/// by its bill item (paid, or approved without payment), never duplicated here,
+/// so the money and the work can never disagree.
+model ServiceOrder {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  caseId     String    @db.Uuid
+  case       Case      @relation(fields: [caseId], references: [id])
+  patientId  String    @db.Uuid
+  patient    Patient   @relation(fields: [patientId], references: [id])
+  opdVisitId String?   @db.Uuid
+  opdVisit   OpdVisit? @relation(fields: [opdVisitId], references: [id])
+
+  serviceId   String?            @db.Uuid
+  service     Service?           @relation(fields: [serviceId], references: [id])
+  serviceName String
+  department  ServiceDepartment?
+
+  /// The money side. One order, one line on the bill.
+  billItemId String?   @unique @db.Uuid
+  billItem   BillItem? @relation(fields: [billItemId], references: [id])
+
+  status        ServiceOrderStatus @default(ordered)
+  note          String?
+  orderedById   String?            @db.Uuid
+  orderedAt     DateTime           @default(now())
+  startedAt     DateTime?
+  startedById   String?            @db.Uuid
+  completedAt   DateTime?
+  completedById String?            @db.Uuid
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, department, status])
+  @@index([tenantId, patientId, orderedAt])
+  @@index([tenantId, opdVisitId])
+}
+
+/// One line of a prescription. The "prescription" is every line on a visit.
+/// Free text until the medicine master arrives with the pharmacy module.
+model PrescriptionItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  opdVisitId String   @db.Uuid
+  opdVisit   OpdVisit @relation(fields: [opdVisitId], references: [id], onDelete: Cascade)
+
+  drugName     String
+  dose         String?
+  frequency    String?
+  durationDays Int?
+  instructions String?
+  sortOrder    Int     @default(0)
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
   @@index([tenantId, opdVisitId])
 }
 
@@ -628,6 +728,19 @@ model BillItem {
   discountMinor     Int                @default(0)
   /// (price * qty) - discount
   netMinor          Int
+  /// Why the price was conceded, e.g. a doctor waiving part of his own fee.
+  discountReason    String?
+
+  status    BillItemStatus @default(pending)
+  paymentId String?        @db.Uuid
+  payment   Payment?       @relation(fields: [paymentId], references: [id])
+
+  /// Released to the department without cash — a panel patient or a waiver.
+  /// Always carries who approved it and why, so it cannot become a quiet leak.
+  approvedWithoutPayment Boolean   @default(false)
+  approvalReason         String?
+  approvedById           String?   @db.Uuid
+  approvedAt             DateTime?
 
   note        String?
   chargedAt   DateTime @default(now())
@@ -635,10 +748,13 @@ model BillItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  serviceOrder ServiceOrder?
+
   @@index([tenantId, caseId])
   @@index([tenantId, opdVisitId])
   @@index([tenantId, chargedAt])
   @@index([tenantId, department])
+  @@index([tenantId, status])
 }
 
 model Payment {
@@ -664,6 +780,9 @@ model Payment {
   createdById String?  @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  /// The lines this receipt settled.
+  billItems BillItem[]
 
   @@unique([tenantId, receiptNo])
   @@index([tenantId, caseId])

@@ -68,10 +68,21 @@ export const PERMISSIONS = [
   // service list
   'service:read',
   'service:manage',
+  // doctor's orders (lab tests, imaging, procedures)
+  'order:create',
+  'order:read',
+  /// start / complete an order in a department worklist
+  'order:update',
+  'order:cancel',
+  // prescriptions
+  'prescription:read',
+  'prescription:write',
   // billing
   'bill:create',
   'bill:read',
   'bill:delete',
+  /// release an unpaid order to a department (panel patient or waiver)
+  'bill:approve',
   'payment:create',
   'payment:read',
   'payment:reverse',
@@ -95,6 +106,8 @@ const READ_ONLY_SET: Permission[] = [
   'bill:read',
   'service:read',
   'payment:read',
+  'order:read',
+  'prescription:read',
   'tpa:read',
 ];
 
@@ -131,6 +144,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'bill:read',
     'payment:create',
     'payment:read',
+    'order:read',
+    'prescription:read',
     'tpa:read',
   ],
 
@@ -151,6 +166,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'practitioner:read',
     'bill:read',
     'bill:create',
+    'order:create',
+    'order:read',
+    'order:cancel',
+    'prescription:read',
+    'prescription:write',
   ],
 
   nurse: [
@@ -163,6 +183,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'vital:read',
     'vocabulary:read',
     'practitioner:read',
+    'order:read',
+    'prescription:read',
   ],
 
   accountant: [
@@ -174,6 +196,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'bill:create',
     'bill:read',
     'bill:delete',
+    'bill:approve',
+    'order:read',
     'payment:create',
     'payment:read',
     'payment:reverse',
@@ -182,10 +206,19 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'audit:read',
   ],
 
-  // Their modules land in Phase 3; for now they can see the patient in front of them.
-  pharmacist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
-  pathologist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
-  radiologist: ['patient:read', 'case:read', 'opd:read', 'vocabulary:read'],
+  // Department staff work a queue of released orders. Results arrive in Phase 3.
+  pathologist: [
+    'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
+    'order:read', 'order:update', 'prescription:read',
+  ],
+  radiologist: [
+    'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
+    'order:read', 'order:update', 'prescription:read',
+  ],
+  pharmacist: [
+    'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
+    'order:read', 'prescription:read',
+  ],
 
   read_only: READ_ONLY_SET,
 };

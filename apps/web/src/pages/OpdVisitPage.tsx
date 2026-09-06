@@ -2,14 +2,22 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  FREQUENCY_SUGGESTIONS,
   OPD_STATUS_LABELS,
+  SERVICE_ORDER_STATUS_LABELS,
+  VISIT_STAGE_LABELS,
+  createServiceOrdersSchema,
   flagFor,
   formatMoney,
   recordVitalsSchema,
+  setPrescriptionSchema,
   updateOpdVisitSchema,
   type OpdVisit,
   type OpdVisitStatus,
+  type PrescriptionItem,
   type Practitioner,
+  type Service,
+  type ServiceOrder,
   type UpdateOpdVisitInput,
   type VitalReading,
   type VitalType,
@@ -20,6 +28,7 @@ import { blankToUndefined, formatDateTime, fullName } from '../lib/format';
 import { DiagnosisEditor, type DiagnosisDraft } from '../components/DiagnosisEditor';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
 import { PatientHeader } from '../components/PatientHeader';
+import { ServicePicker } from '../components/ServicePicker';
 import { StatusBadge } from '../components/StatusBadge';
 import { VisitTermEditor, type TermDraft } from '../components/VisitTermEditor';
 
@@ -171,6 +180,8 @@ export function OpdVisitPage() {
 
   const v = visit.data;
   const canEdit = can('opd:update') && v.status !== 'cancelled' && v.status !== 'completed';
+  const canPrescribe = can('prescription:write') && canEdit;
+  const canOrder = can('order:create') && v.status !== 'cancelled' && v.status !== 'completed';
   const allergyText = v.knownAllergies?.trim() || v.patient.knownAllergies?.trim() || '';
 
   return (
@@ -211,6 +222,10 @@ export function OpdVisitPage() {
             <dt>Status</dt>
             <dd>
               <StatusBadge status={v.status} label={OPD_STATUS_LABELS[v.status]} />
+            </dd>
+            <dt>Stage</dt>
+            <dd>
+              <StatusBadge status={v.stage} label={VISIT_STAGE_LABELS[v.stage]} />
             </dd>
             <dt>Case balance</dt>
             <dd className={v.caseBalance.balanceMinor > 0 ? 'balance-due' : 'balance-clear'}>
@@ -403,6 +418,10 @@ export function OpdVisitPage() {
         </div>
       </form>
 
+      <PrescriptionPanel visitId={v.id} canWrite={canPrescribe} />
+
+      <OrdersPanel visitId={v.id} canOrder={canOrder} canRead={can('order:read')} />
+
       <VitalsPanel
         patientId={v.patient.id}
         caseId={v.caseId}
@@ -410,6 +429,470 @@ export function OpdVisitPage() {
         canRecord={can('vital:create') && v.status !== 'cancelled'}
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prescription
+// ---------------------------------------------------------------------------
+
+interface PrescriptionRow {
+  drugName: string;
+  dose: string;
+  frequency: string;
+  durationDays: string;
+  instructions: string;
+}
+
+const EMPTY_RX_ROW: PrescriptionRow = {
+  drugName: '',
+  dose: '',
+  frequency: '',
+  durationDays: '',
+  instructions: '',
+};
+
+function toRxRow(item: PrescriptionItem): PrescriptionRow {
+  return {
+    drugName: item.drugName,
+    dose: item.dose ?? '',
+    frequency: item.frequency ?? '',
+    durationDays: item.durationDays != null ? String(item.durationDays) : '',
+    instructions: item.instructions ?? '',
+  };
+}
+
+const FREQ_LIST_ID = 'rx-frequency-suggestions';
+
+function PrescriptionPanel({
+  visitId,
+  canWrite,
+}: {
+  visitId: string;
+  canWrite: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [rows, setRows] = useState<PrescriptionRow[]>([EMPTY_RX_ROW]);
+  const [issue, setIssue] = useState<string | null>(null);
+
+  const rx = useQuery({
+    // PrescriptionItem[] for this visit — its own shape, its own key.
+    queryKey: ['opd', 'prescription', visitId],
+    queryFn: async () => {
+      const { data } = await api.get<PrescriptionItem[]>(`/opd/${visitId}/prescription`);
+      return data;
+    },
+    enabled: Boolean(visitId),
+  });
+
+  useEffect(() => {
+    if (!rx.data) return;
+    setRows(rx.data.length ? rx.data.map(toRxRow) : [EMPTY_RX_ROW]);
+  }, [rx.data]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const items = rows
+        .filter((r) => r.drugName.trim())
+        .map((r) => ({
+          drugName: r.drugName.trim(),
+          dose: blankToUndefined(r.dose),
+          frequency: blankToUndefined(r.frequency),
+          durationDays: r.durationDays.trim() ? Number(r.durationDays) : undefined,
+          instructions: blankToUndefined(r.instructions),
+        }));
+      const parsed = setPrescriptionSchema.safeParse({ items });
+      if (!parsed.success) {
+        throw new Error(
+          parsed.error.issues[0]?.message ?? 'Check the prescription rows.',
+        );
+      }
+      const { data } = await api.put<PrescriptionItem[]>(
+        `/opd/${visitId}/prescription`,
+        parsed.data,
+      );
+      return data;
+    },
+    onSuccess: async () => {
+      setIssue(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['opd', 'prescription', visitId],
+      });
+    },
+    onError: (err) =>
+      setIssue(err instanceof Error ? err.message : 'Could not save the prescription'),
+  });
+
+  const setRow = (index: number, patch: Partial<PrescriptionRow>) =>
+    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+
+  return (
+    <div className="card">
+      <div className="section">
+        <h2>Prescription</h2>
+        <datalist id={FREQ_LIST_ID}>
+          {FREQUENCY_SUGGESTIONS.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
+
+        <ErrorNote error={rx.error} fallback="Could not load the prescription" />
+        {rx.isPending && <Loading label="Loading prescription…" />}
+        {issue && (
+          <div className="alert" role="alert">
+            {issue}
+          </div>
+        )}
+        <ErrorNote error={save.error} fallback="Could not save the prescription" />
+
+        {!canWrite && rx.data && rx.data.length === 0 && (
+          <p className="muted">No prescription recorded.</p>
+        )}
+
+        {(canWrite || (rx.data && rx.data.length > 0)) && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Drug</th>
+                  <th>Dose</th>
+                  <th>Frequency</th>
+                  <th className="num">Days</th>
+                  <th>Instructions</th>
+                  {canWrite && <th className="no-print" />}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input
+                        aria-label={`Drug ${i + 1}`}
+                        value={r.drugName}
+                        disabled={!canWrite}
+                        onChange={(e) => setRow(i, { drugName: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`Dose ${i + 1}`}
+                        value={r.dose}
+                        disabled={!canWrite}
+                        onChange={(e) => setRow(i, { dose: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`Frequency ${i + 1}`}
+                        list={FREQ_LIST_ID}
+                        value={r.frequency}
+                        disabled={!canWrite}
+                        onChange={(e) => setRow(i, { frequency: e.target.value })}
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        aria-label={`Duration in days ${i + 1}`}
+                        value={r.durationDays}
+                        disabled={!canWrite}
+                        onChange={(e) => setRow(i, { durationDays: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`Instructions ${i + 1}`}
+                        value={r.instructions}
+                        disabled={!canWrite}
+                        onChange={(e) => setRow(i, { instructions: e.target.value })}
+                      />
+                    </td>
+                    {canWrite && (
+                      <td className="no-print">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={rows.length === 1}
+                          onClick={() =>
+                            setRows((prev) => prev.filter((_, idx) => idx !== i))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {canWrite && (
+          <div className="row no-print" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setRows((prev) => [...prev, EMPTY_RX_ROW])}
+            >
+              Add row
+            </button>
+            <button type="button" disabled={save.isPending} onClick={() => save.mutate()}>
+              {save.isPending ? 'Saving…' : 'Save prescription'}
+            </button>
+            {save.isSuccess && <span className="muted">Saved.</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recommended tests & services
+// ---------------------------------------------------------------------------
+
+interface BasketItem {
+  key: string;
+  serviceId?: string;
+  name: string;
+  priceMinor: number | null;
+  quantity: string;
+  note: string;
+}
+
+function OrdersPanel({
+  visitId,
+  canOrder,
+  canRead,
+}: {
+  visitId: string;
+  canOrder: boolean;
+  canRead: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [basket, setBasket] = useState<BasketItem[]>([]);
+  const [issue, setIssue] = useState<string | null>(null);
+
+  const orders = useQuery({
+    // ServiceOrder[] scoped to this visit — distinct from the worklist key.
+    queryKey: ['orders', 'byVisit', visitId],
+    queryFn: async () => {
+      const { data } = await api.get<ServiceOrder[]>('/orders', {
+        params: { opdVisitId: visitId },
+      });
+      return data;
+    },
+    enabled: Boolean(visitId) && canRead,
+  });
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const parsed = createServiceOrdersSchema.safeParse({
+        opdVisitId: visitId,
+        orders: basket.map((b) => ({
+          serviceId: b.serviceId,
+          serviceName: b.serviceId ? undefined : b.name,
+          priceMinor: b.priceMinor ?? undefined,
+          quantity: b.quantity.trim() ? Number(b.quantity) : undefined,
+          note: blankToUndefined(b.note),
+        })),
+      });
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? 'Check the basket.');
+      }
+      const { data } = await api.post<ServiceOrder[]>('/orders', parsed.data);
+      return data;
+    },
+    onSuccess: async () => {
+      setBasket([]);
+      setIssue(null);
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['opd', 'list'] });
+      await queryClient.invalidateQueries({ queryKey: ['opd', 'visit', visitId] });
+    },
+    onError: (err) =>
+      setIssue(err instanceof Error ? err.message : 'Could not place the orders'),
+  });
+
+  const addService = (s: Service) =>
+    setBasket((prev) => [
+      ...prev,
+      {
+        key: `${s.id}-${Date.now()}`,
+        serviceId: s.id,
+        name: s.name,
+        priceMinor: s.defaultPriceMinor,
+        quantity: '1',
+        note: '',
+      },
+    ]);
+
+  const addFreeText = (name: string) =>
+    setBasket((prev) => [
+      ...prev,
+      {
+        key: `text-${Date.now()}`,
+        name,
+        priceMinor: null,
+        quantity: '1',
+        note: '',
+      },
+    ]);
+
+  const setItem = (key: string, patch: Partial<BasketItem>) =>
+    setBasket((prev) => prev.map((b) => (b.key === key ? { ...b, ...patch } : b)));
+
+  function paymentStateLabel(o: ServiceOrder): string {
+    if (o.approvedWithoutPayment) return 'Approved without payment';
+    if (o.billStatus === 'paid') return 'Paid';
+    if (o.billStatus === 'pending') return 'Payment pending';
+    if (o.billStatus === 'cancelled') return 'Charge cancelled';
+    if (o.billStatus === 'refunded') return 'Refunded';
+    return 'No charge';
+  }
+
+  return (
+    <div className="card">
+      <div className="section">
+        <h2>Recommended tests &amp; services</h2>
+
+        {canOrder && (
+          <>
+            {issue && (
+              <div className="alert" role="alert">
+                {issue}
+              </div>
+            )}
+            <ErrorNote error={submit.error} fallback="Could not place the orders" />
+            <ServicePicker
+              label="Add a test or service"
+              onSelect={addService}
+              onSubmitText={addFreeText}
+            />
+
+            {basket.length > 0 && (
+              <div className="table-wrap" style={{ marginTop: 12 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th className="num">Qty</th>
+                      <th>Note</th>
+                      <th className="no-print" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {basket.map((b) => (
+                      <tr key={b.key}>
+                        <td>
+                          {b.name}
+                          <div className="muted">
+                            {b.serviceId
+                              ? b.priceMinor != null
+                                ? formatMoney(b.priceMinor)
+                                : 'Service'
+                              : 'One-off item'}
+                          </div>
+                        </td>
+                        <td className="num">
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            aria-label={`Quantity for ${b.name}`}
+                            value={b.quantity}
+                            onChange={(e) => setItem(b.key, { quantity: e.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label={`Note for ${b.name}`}
+                            value={b.note}
+                            onChange={(e) => setItem(b.key, { note: e.target.value })}
+                          />
+                        </td>
+                        <td className="no-print">
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setBasket((prev) => prev.filter((x) => x.key !== b.key))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="row no-print" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                disabled={basket.length === 0 || submit.isPending}
+                onClick={() => submit.mutate()}
+              >
+                {submit.isPending ? 'Submitting…' : 'Order selected'}
+              </button>
+              <span className="muted">
+                Each order becomes a pending charge the cashier collects.
+              </span>
+            </div>
+          </>
+        )}
+
+        <h2 style={{ marginTop: canOrder ? 20 : 0 }}>Orders on this visit</h2>
+        <ErrorNote error={orders.error} fallback="Could not load orders" />
+        {orders.isPending && canRead && <Loading label="Loading orders…" />}
+        {orders.data && orders.data.length === 0 && (
+          <p className="muted">No tests or services ordered yet.</p>
+        )}
+        {orders.data && orders.data.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Ordered</th>
+                  <th>Status</th>
+                  <th>Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.data.map((o) => (
+                  <tr key={o.id}>
+                    <td>
+                      {o.serviceName}
+                      {o.note ? <div className="muted">{o.note}</div> : null}
+                    </td>
+                    <td>{formatDateTime(o.orderedAt)}</td>
+                    <td>
+                      <StatusBadge
+                        status={o.status}
+                        label={SERVICE_ORDER_STATUS_LABELS[o.status]}
+                      />
+                    </td>
+                    <td>
+                      {o.billStatus === 'pending' && !o.approvedWithoutPayment ? (
+                        <span className="badge badge-ordered">Payment pending</span>
+                      ) : (
+                        <span className="muted">{paymentStateLabel(o)}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

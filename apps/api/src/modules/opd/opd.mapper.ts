@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client';
-import type {
-  OpdVisit as OpdVisitDto,
-  OpdVisitListItem,
+import {
+  computeVisitStage,
+  type OpdVisit as OpdVisitDto,
+  type OpdVisitListItem,
 } from '@hms/shared';
 import { balanceOf } from '../cases/cases.mapper.js';
 import {
@@ -48,7 +49,27 @@ export type OpdVisitDetailRow = Prisma.OpdVisitGetPayload<{
   include: typeof opdVisitDetailInclude;
 }>;
 
-export function toOpdVisitListItem(v: OpdVisitListRow): OpdVisitListItem {
+/**
+ * The three counts the front-desk stage is derived from. Loaded once per list
+ * page with grouped queries — never per row — and fed straight into the shared
+ * `computeVisitStage` so the API and the web client can never disagree on it.
+ */
+export interface VisitStageCounts {
+  unpaidItemCount: number;
+  orderedCount: number;
+  inProgressCount: number;
+}
+
+export const EMPTY_STAGE_COUNTS: VisitStageCounts = {
+  unpaidItemCount: 0,
+  orderedCount: 0,
+  inProgressCount: 0,
+};
+
+export function toOpdVisitListItem(
+  v: OpdVisitListRow,
+  counts: VisitStageCounts,
+): OpdVisitListItem {
   const balance = balanceOf(v.case);
   return {
     id: v.id,
@@ -64,12 +85,19 @@ export function toOpdVisitListItem(v: OpdVisitListRow): OpdVisitListItem {
     netChargedMinor: balance.chargedMinor,
     paidMinor: balance.paidMinor,
     balanceMinor: balance.balanceMinor,
+    stage: computeVisitStage({ status: v.status, ...counts }),
+    unpaidItemCount: counts.unpaidItemCount,
+    orderedCount: counts.orderedCount,
+    inProgressCount: counts.inProgressCount,
   };
 }
 
-export function toOpdVisitDto(v: OpdVisitDetailRow): OpdVisitDto {
+export function toOpdVisitDto(
+  v: OpdVisitDetailRow,
+  counts: VisitStageCounts,
+): OpdVisitDto {
   return {
-    ...toOpdVisitListItem(v),
+    ...toOpdVisitListItem(v, counts),
     isLiveConsult: v.isLiveConsult,
     reference: v.reference,
     note: v.note,

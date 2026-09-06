@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   OPD_STATUS_LABELS,
+  VISIT_STAGE_LABELS,
   formatMoney,
   type OpdScope,
   type OpdVisitListItem,
@@ -128,6 +129,7 @@ export function OpdListPage() {
               <th>Practitioner</th>
               <th>Time</th>
               <th>Status</th>
+              <th>Stage</th>
               <th className="num">Charged</th>
               <th className="num">Paid</th>
               <th className="num">Balance</th>
@@ -155,6 +157,9 @@ export function OpdListPage() {
                 <td>
                   <StatusBadge status={v.status} label={OPD_STATUS_LABELS[v.status]} />
                 </td>
+                <td>
+                  <StatusBadge status={v.stage} label={VISIT_STAGE_LABELS[v.stage]} />
+                </td>
                 <td className="num">{formatMoney(v.netChargedMinor)}</td>
                 <td className="num">{formatMoney(v.paidMinor)}</td>
                 <td
@@ -166,7 +171,7 @@ export function OpdListPage() {
             ))}
             {visits.data && visits.data.length === 0 && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={9} className="muted">
                   No visits in this view.
                 </td>
               </tr>

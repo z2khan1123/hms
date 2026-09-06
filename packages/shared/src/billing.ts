@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { isoDateSchema, isoDateTimeSchema } from './common.js';
 import { serviceDepartmentSchema } from './services.js';
+import { billItemStatusSchema } from './orders.js';
+import { patientSummarySchema } from './patient.js';
 
 export const paymentModeSchema = z.enum([
   'cash',
@@ -55,6 +57,12 @@ export type AddBillItemInput = z.infer<typeof addBillItemSchema>;
 
 export const billItemSchema = z.object({
   id: z.string().uuid(),
+  status: billItemStatusSchema,
+  /** The receipt that settled this line, if any. */
+  paymentId: z.string().uuid().nullable(),
+  approvedWithoutPayment: z.boolean(),
+  approvalReason: z.string().nullable(),
+  discountReason: z.string().nullable(),
   serviceId: z.string().uuid().nullable(),
   serviceName: z.string(),
   department: serviceDepartmentSchema.nullable(),
@@ -75,6 +83,13 @@ export type BillItem = z.infer<typeof billItemSchema>;
 export const createPaymentSchema = z
   .object({
     caseId: z.string().uuid(),
+    /**
+     * The lines this payment settles. Supply them and the receipt itemises what
+     * was paid for and those lines become `paid` — this is what makes
+     * "pay for this test now" and "settle everything at the end" the same code
+     * path. Omit for an unallocated advance; the amount must then still be > 0.
+     */
+    billItemIds: z.array(z.string().uuid()).max(100).optional(),
     amountMinor: z.number().int().min(1),
     mode: paymentModeSchema,
     paidAt: isoDateTimeSchema.optional(),
@@ -124,3 +139,23 @@ export const caseLedgerSchema = z.object({
   balanceMinor: z.number().int(),
 });
 export type CaseLedger = z.infer<typeof caseLedgerSchema>;
+
+/** Release an unpaid line to its department — a panel patient, or a waiver. */
+export const approveBillItemSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+/**
+ * The cashier's queue: every patient with money outstanding, newest first.
+ * One row per case, so the counter settles a patient rather than a line.
+ */
+export const pendingChargeGroupSchema = z.object({
+  caseId: z.string().uuid(),
+  caseNo: z.string(),
+  patient: patientSummarySchema,
+  items: z.array(billItemSchema),
+  pendingCount: z.number().int(),
+  pendingMinor: z.number().int(),
+  oldestPendingAt: isoDateTimeSchema,
+});
+export type PendingChargeGroup = z.infer<typeof pendingChargeGroupSchema>;

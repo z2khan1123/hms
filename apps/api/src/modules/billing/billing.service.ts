@@ -13,11 +13,16 @@ import {
   computeCaseBalance,
   type CreatePaymentInput,
   type Payment as PaymentDto,
+  type PendingChargeGroup,
 } from '@hms/shared';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { parseIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CasesService } from '../cases/cases.service.js';
+import {
+  patientSummarySelect,
+  toPatientSummary,
+} from '../patients/patients.mapper.js';
 import { toBillItemDto, toPaymentDto } from './billing.mapper.js';
 
 @Injectable()
@@ -53,7 +58,7 @@ export class BillingService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     createdById: string,
-    input: AddBillItemInput,
+    input: AddBillItemInput & { discountReason?: string | null },
   ): Promise<BillItem> {
     await this.cases.assertOpen(tx, tenantId, input.caseId);
 
@@ -110,6 +115,7 @@ export class BillingService {
         discountBps: totals.discountBps,
         discountMinor: totals.discountMinor,
         netMinor: totals.netMinor,
+        discountReason: input.discountReason ?? null,
         note: input.note ?? null,
         createdById,
       },
@@ -154,6 +160,15 @@ export class BillingService {
     return toPaymentDto(created);
   }
 
+  /**
+   * A payment either settles specific bill lines or lands as an unallocated
+   * advance. When `billItemIds` are given: every id must belong to this case and
+   * tenant and still be `pending`, and `amountMinor` must equal the sum of their
+   * `netMinor` to the paisa — a settlement that does not add up is rejected, not
+   * quietly absorbed. Settled lines become `paid` and point at the new receipt;
+   * a registered visit whose consultation line was just settled advances to
+   * `waiting`.
+   */
   async createPaymentInTx(
     tx: Prisma.TransactionClient,
     tenantId: string,
@@ -166,9 +181,52 @@ export class BillingService {
     });
     if (!found) throw new NotFoundException('Case not found');
 
+    let settledItems: { id: string; opdVisitId: string | null }[] = [];
+    if (input.billItemIds && input.billItemIds.length > 0) {
+      const ids = [...new Set(input.billItemIds)];
+      const items = await tx.billItem.findMany({
+        where: { id: { in: ids }, tenantId },
+        select: {
+          id: true,
+          caseId: true,
+          status: true,
+          netMinor: true,
+          opdVisitId: true,
+        },
+      });
+      if (items.length !== ids.length) {
+        throw new BadRequestException(
+          'One or more selected bill items were not found for this hospital',
+        );
+      }
+      for (const it of items) {
+        if (it.caseId !== input.caseId) {
+          throw new BadRequestException(
+            'A selected line belongs to a different case',
+          );
+        }
+        if (it.status !== 'pending') {
+          throw new BadRequestException(
+            'A selected line is not awaiting payment',
+          );
+        }
+      }
+      const sumMinor = items.reduce((sum, it) => sum + it.netMinor, 0);
+      if (sumMinor !== input.amountMinor) {
+        throw new BadRequestException(
+          `Payment amount (${input.amountMinor}) must equal the sum of the ` +
+            `selected lines (${sumMinor})`,
+        );
+      }
+      settledItems = items.map((it) => ({
+        id: it.id,
+        opdVisitId: it.opdVisitId,
+      }));
+    }
+
     const receiptNo = await this.sequence.next(tx, tenantId, 'receipt');
 
-    return tx.payment.create({
+    const payment = await tx.payment.create({
       data: {
         tenantId,
         caseId: input.caseId,
@@ -183,6 +241,29 @@ export class BillingService {
         createdById,
       },
     });
+
+    if (settledItems.length > 0) {
+      await tx.billItem.updateMany({
+        where: { id: { in: settledItems.map((i) => i.id) }, tenantId },
+        data: { status: 'paid', paymentId: payment.id },
+      });
+
+      const visitIds = [
+        ...new Set(
+          settledItems
+            .map((i) => i.opdVisitId)
+            .filter((v): v is string => v !== null),
+        ),
+      ];
+      if (visitIds.length > 0) {
+        await tx.opdVisit.updateMany({
+          where: { id: { in: visitIds }, tenantId, status: 'registered' },
+          data: { status: 'waiting' },
+        });
+      }
+    }
+
+    return payment;
   }
 
   async listPayments(
@@ -215,9 +296,18 @@ export class BillingService {
       throw new ConflictException('Payment is already reversed');
     }
 
-    const updated = await this.prisma.payment.update({
-      where: { id },
-      data: { reversedAt: new Date(), reversalReason: reason },
+    // Additive on the receipt, but the lines it settled go back to `pending` and
+    // lose their pointer to it — the money is owed again.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.update({
+        where: { id },
+        data: { reversedAt: new Date(), reversalReason: reason },
+      });
+      await tx.billItem.updateMany({
+        where: { tenantId, paymentId: id },
+        data: { status: 'pending', paymentId: null },
+      });
+      return payment;
     });
     return toPaymentDto(updated);
   }
@@ -271,6 +361,79 @@ export class BillingService {
       paidMinor: balance.paidMinor,
       balanceMinor: balance.balanceMinor,
     };
+  }
+
+  /**
+   * The cashier's queue. One row per open case that still has `pending` lines,
+   * longest-waiting patient first, so the counter works a patient rather than a
+   * scattered list of lines.
+   */
+  async pending(tenantId: string): Promise<PendingChargeGroup[]> {
+    const cases = await this.prisma.case.findMany({
+      where: {
+        tenantId,
+        status: 'open',
+        billItems: { some: { status: 'pending' } },
+      },
+      select: {
+        id: true,
+        caseNo: true,
+        patient: { select: patientSummarySelect },
+        billItems: {
+          where: { status: 'pending' },
+          orderBy: { chargedAt: 'asc' },
+        },
+      },
+    });
+
+    return cases
+      .map((c) => {
+        const items = c.billItems;
+        return {
+          caseId: c.id,
+          caseNo: c.caseNo,
+          patient: toPatientSummary(c.patient),
+          items: items.map(toBillItemDto),
+          pendingCount: items.length,
+          pendingMinor: items.reduce((sum, i) => sum + i.netMinor, 0),
+          oldestPendingAt: items[0].chargedAt.toISOString(),
+        };
+      })
+      .sort((a, b) => a.oldestPendingAt.localeCompare(b.oldestPendingAt));
+  }
+
+  /**
+   * Release an unpaid line to its department — a panel patient or a waiver. The
+   * money is still owed, so `status` does not change; the line just becomes
+   * releasable, and it carries who approved it and why.
+   */
+  async approveBillItem(
+    tenantId: string,
+    approvedById: string,
+    id: string,
+    reason: string,
+  ): Promise<BillItemDto> {
+    const item = await this.prisma.billItem.findFirst({
+      where: { id, tenantId },
+      select: { id: true, status: true },
+    });
+    if (!item) throw new NotFoundException('Bill item not found');
+    if (item.status !== 'pending') {
+      throw new ConflictException(
+        'Only a pending line can be released without payment',
+      );
+    }
+
+    const updated = await this.prisma.billItem.update({
+      where: { id },
+      data: {
+        approvedWithoutPayment: true,
+        approvalReason: reason,
+        approvedById,
+        approvedAt: new Date(),
+      },
+    });
+    return toBillItemDto(updated);
   }
 
   private async assertCaseExists(

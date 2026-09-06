@@ -11,6 +11,7 @@ import {
 import {
   type AddBillItemInput,
   addBillItemSchema,
+  approveBillItemSchema,
   type CreatePaymentInput,
   createPaymentSchema,
   reversePaymentSchema,
@@ -28,6 +29,28 @@ export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
   // --- bill items --------------------------------------------------------
+
+  @Get('pending')
+  @Permissions('bill:read')
+  @Audit('bill.pending')
+  pending(@CurrentUser() user: AuthUser) {
+    return this.billing.pending(requireTenant(user));
+  }
+
+  @Post('bill-items/:id/approve')
+  @Permissions('bill:approve')
+  approveBillItem(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(approveBillItemSchema)) dto: { reason: string },
+  ) {
+    return this.billing.approveBillItem(
+      requireTenant(user),
+      user.id,
+      id,
+      dto.reason,
+    );
+  }
 
   @Post('bill-items')
   @Permissions('bill:create')

@@ -5,6 +5,11 @@ import { toIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js
 export function toBillItemDto(b: BillItem): BillItemDto {
   return {
     id: b.id,
+    status: b.status,
+    paymentId: b.paymentId,
+    approvedWithoutPayment: b.approvedWithoutPayment,
+    approvalReason: b.approvalReason,
+    discountReason: b.discountReason,
     serviceId: b.serviceId,
     serviceName: b.serviceName,
     department: b.department,
