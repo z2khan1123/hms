@@ -15,8 +15,23 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
-    this.logger.log('Database connected');
+    // Serverless Postgres (e.g. Neon) suspends its compute when idle; the first
+    // connection has to wake it, which can exceed the driver's connect timeout.
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.$connect();
+        this.logger.log('Database connected');
+        return;
+      } catch (err) {
+        if (attempt === maxAttempts) throw err;
+        this.logger.warn(
+          `Database connection attempt ${attempt}/${maxAttempts} failed ` +
+            `(${(err as Error).message}); retrying in 2s`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
