@@ -18,7 +18,7 @@ import { toPractitionerDto } from '../practitioners/practitioners.mapper.js';
 const caseMoneySelect = {
   id: true,
   caseNo: true,
-  chargeItems: { select: { netMinor: true } },
+  billItems: { select: { netMinor: true } },
   payments: { select: { amountMinor: true, reversedAt: true } },
 } as const;
 

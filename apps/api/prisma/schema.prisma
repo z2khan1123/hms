@@ -87,21 +87,16 @@ enum PaymentMode {
   other
 }
 
-/// Which department a charge belongs to. Mirrors the charge-type axis every
-/// module bills against.
-enum ChargeTypeKind {
+/// Optional grouping on a service, for filtering and revenue reporting.
+/// Extended as later modules land.
+enum ServiceDepartment {
   opd
-  ipd
-  appointment
-  pathology
+  procedure
+  laboratory
   radiology
   pharmacy
-  blood_bank
+  inpatient
   ambulance
-  operations
-  investigations
-  procedures
-  supplies
   other
 }
 
@@ -143,24 +138,21 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users            User[]
-  patients         Patient[]
-  practitioners    Practitioner[]
-  appointments     Appointment[]
-  tpas             Tpa[]
-  cases            Case[]
-  opdVisits        OpdVisit[]
-  chargeCategories ChargeCategory[]
-  unitTypes        UnitType[]
-  taxCategories    TaxCategory[]
-  charges          Charge[]
-  chargeItems      ChargeItem[]
-  payments         Payment[]
-  symptomTypes     SymptomType[]
-  symptoms         Symptom[]
-  findings         Finding[]
-  vitalTypes       VitalType[]
-  vitalReadings    VitalReading[]
+  users         User[]
+  patients      Patient[]
+  practitioners Practitioner[]
+  appointments  Appointment[]
+  tpas          Tpa[]
+  cases         Case[]
+  opdVisits     OpdVisit[]
+  services      Service[]
+  billItems     BillItem[]
+  payments      Payment[]
+  symptomTypes  SymptomType[]
+  symptoms      Symptom[]
+  findings      Finding[]
+  vitalTypes    VitalType[]
+  vitalReadings VitalReading[]
 }
 
 model User {
@@ -325,10 +317,10 @@ model Case {
   patientId String  @db.Uuid
   patient   Patient @relation(fields: [patientId], references: [id])
 
-  caseNo   String
-  status   CaseStatus @default(open)
-  openedAt DateTime   @default(now())
-  closedAt DateTime?
+  caseNo       String
+  status       CaseStatus @default(open)
+  openedAt     DateTime   @default(now())
+  closedAt     DateTime?
   /// Why the episode was closed — `closeCaseSchema` accepts it and the audit
   /// trail deliberately stores no request bodies, so it is kept on the row.
   closedReason String?
@@ -347,7 +339,7 @@ model Case {
   updatedAt   DateTime @updatedAt
 
   opdVisits     OpdVisit[]
-  chargeItems   ChargeItem[]
+  billItems     BillItem[]
   payments      Payment[]
   vitalReadings VitalReading[]
 
@@ -357,83 +349,38 @@ model Case {
 }
 
 // ---------------------------------------------------------------------------
-// Charge master
+// Services — what a patient can be charged for
 // ---------------------------------------------------------------------------
 
-model ChargeCategory {
-  id         String         @id @default(uuid()) @db.Uuid
-  tenantId   String         @db.Uuid
-  tenant     Tenant         @relation(fields: [tenantId], references: [id])
-  name       String
-  chargeType ChargeTypeKind
-  isActive   Boolean        @default(true)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+/// A named thing the hospital does: a consultation, a dressing, an ECG.
+/// It carries only an OPTIONAL suggested price. The price that actually gets
+/// billed is entered on the patient's own record at the time of service, so a
+/// clinic can charge one patient differently from the next without maintaining
+/// a price book. The list exists so the NAME is consistent — otherwise "ECG",
+/// "E.C.G." and "ecg" become three different things and revenue by service
+/// can never be reported.
+model Service {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  charges Charge[]
+  name              String
+  /// Optional tag, only for filtering long lists and grouping revenue reports.
+  department        ServiceDepartment?
+  /// Optional. Pre-fills the price field; always editable per patient.
+  defaultPriceMinor Int?
+  description       String?
+  isActive          Boolean            @default(true)
 
-  @@unique([tenantId, name, chargeType])
-  @@index([tenantId, chargeType])
-}
-
-/// e.g. "per day", "per hour", "per km", "per session"
-model UnitType {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  charges Charge[]
+  billItems BillItem[]
 
   @@unique([tenantId, name])
+  @@index([tenantId, department])
 }
 
-model TaxCategory {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  /// Basis points: 1800 = 18.00%
-  rateBps   Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  charges Charge[]
-
-  @@unique([tenantId, name])
-}
-
-model Charge {
-  id               String         @id @default(uuid()) @db.Uuid
-  tenantId         String         @db.Uuid
-  tenant           Tenant         @relation(fields: [tenantId], references: [id])
-  chargeCategoryId String         @db.Uuid
-  chargeCategory   ChargeCategory @relation(fields: [chargeCategoryId], references: [id])
-  unitTypeId       String?        @db.Uuid
-  unitType         UnitType?      @relation(fields: [unitTypeId], references: [id])
-  taxCategoryId    String?        @db.Uuid
-  taxCategory      TaxCategory?   @relation(fields: [taxCategoryId], references: [id])
-
-  name                String
-  /// List price in minor units. A visit may bill a different *applied* charge.
-  standardChargeMinor Int
-  description         String?
-  isActive            Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  chargeItems ChargeItem[]
-
-  @@unique([tenantId, name, chargeCategoryId])
-  @@index([tenantId, chargeCategoryId])
-}
-
-// ---------------------------------------------------------------------------
 // Clinical vocabulary (tenant-editable) and ICD-10 (global reference data)
 // ---------------------------------------------------------------------------
 
@@ -538,20 +485,20 @@ model OpdVisit {
   /// Allergies as stated at this visit; the patient master holds the running record.
   knownAllergies       String?
 
-  status OpdVisitStatus @default(waiting)
+  status       OpdVisitStatus @default(waiting)
   /// Why the visit was cancelled — `setOpdVisitStatusSchema` accepts a reason and
   /// a cancelled visit that cannot say why is not defensible at a front desk.
   cancelReason String?
 
-  createdById String? @db.Uuid
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   symptoms      VisitSymptom[]
   findings      VisitFinding[]
   diagnoses     VisitDiagnosis[]
   vitalReadings VitalReading[]
-  chargeItems   ChargeItem[]
+  billItems     BillItem[]
 
   @@unique([tenantId, opdNo])
   @@index([tenantId, visitAt])
@@ -655,7 +602,11 @@ model VitalReading {
 
 /// One billed line against a case. Snapshots the charge's name and list price so
 /// later edits to the charge master never rewrite history.
-model ChargeItem {
+/// One line on a patient's bill: what they took, and what they were charged for
+/// it. `serviceName` is snapshotted so renaming a service never rewrites history,
+/// and `serviceId` is nullable so a one-off item can be billed without polluting
+/// the service list.
+model BillItem {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @db.Uuid
   tenant     Tenant    @relation(fields: [tenantId], references: [id])
@@ -663,20 +614,20 @@ model ChargeItem {
   case       Case      @relation(fields: [caseId], references: [id])
   opdVisitId String?   @db.Uuid
   opdVisit   OpdVisit? @relation(fields: [opdVisitId], references: [id])
-  chargeId   String?   @db.Uuid
-  charge     Charge?   @relation(fields: [chargeId], references: [id])
+  serviceId  String?   @db.Uuid
+  service    Service?  @relation(fields: [serviceId], references: [id])
 
-  chargeName          String
-  chargeType          ChargeTypeKind
-  quantity            Int            @default(1)
-  standardChargeMinor Int
-  appliedChargeMinor  Int
-  discountBps         Int            @default(0)
-  discountMinor       Int            @default(0)
-  taxBps              Int            @default(0)
-  taxMinor            Int            @default(0)
-  /// (applied * qty) - discount + tax
-  netMinor            Int
+  serviceName       String
+  department        ServiceDepartment?
+  quantity          Int                @default(1)
+  /// What the service list suggested, if anything. Informational only.
+  defaultPriceMinor Int?
+  /// What this patient was actually charged, per unit.
+  priceMinor        Int
+  discountBps       Int                @default(0)
+  discountMinor     Int                @default(0)
+  /// (price * qty) - discount
+  netMinor          Int
 
   note        String?
   chargedAt   DateTime @default(now())
@@ -687,6 +638,7 @@ model ChargeItem {
   @@index([tenantId, caseId])
   @@index([tenantId, opdVisitId])
   @@index([tenantId, chargedAt])
+  @@index([tenantId, department])
 }
 
 model Payment {

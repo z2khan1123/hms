@@ -8,25 +8,25 @@ import {
   toMajor,
   toMinor,
   type Case,
-  type Charge,
   type CreateOpdVisitInput,
   type OpdVisit,
   type Patient,
   type PaymentMode,
   type Practitioner,
+  type Service,
 } from '@hms/shared';
 import { api } from '../lib/api';
 import {
-  chargeLinePayload,
-  chargeLineTotals,
-  draftForCharge,
-  emptyChargeLineDraft,
+  billLinePayload,
+  billLineTotals,
+  draftForService,
+  emptyBillLineDraft,
   num,
-  type ChargeLineDraft,
-} from '../lib/charge-line';
+  type BillLineDraft,
+} from '../lib/bill-line';
 import { blankToUndefined, formatDateTime, fullName, localInputToIso, toLocalInput } from '../lib/format';
-import { ChargeLineFields } from '../components/ChargeLineFields';
-import { ChargePicker } from '../components/ChargePicker';
+import { BillLineFields } from '../components/BillLineFields';
+import { ServicePicker } from '../components/ServicePicker';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
 import { PatientHeader } from '../components/PatientHeader';
 import { PatientPicker } from '../components/PatientPicker';
@@ -110,13 +110,15 @@ export function OpdNewPage() {
     },
   });
 
-  // --- charge --------------------------------------------------------------
-  const [billCharge, setBillCharge] = useState(true);
-  const [charge, setCharge] = useState<Charge | null>(null);
-  const [chargeDraft, setChargeDraft] = useState<ChargeLineDraft>(emptyChargeLineDraft);
+  // --- billed item -------------------------------------------------------------
+  const [billItem, setBillItem] = useState(true);
+  const [service, setService] = useState<Service | null>(null);
+  const [typedName, setTypedName] = useState('');
+  const [itemDraft, setItemDraft] = useState<BillLineDraft>(emptyBillLineDraft);
 
-  const chargeTotals = useMemo(() => chargeLineTotals(chargeDraft), [chargeDraft]);
-  const netMinor = billCharge && charge ? chargeTotals.netMinor : 0;
+  const hasItem = Boolean(service) || typedName.trim() !== '';
+  const itemTotals = useMemo(() => billLineTotals(itemDraft), [itemDraft]);
+  const netMinor = billItem && hasItem ? itemTotals.netMinor : 0;
 
   // --- payment -------------------------------------------------------------
   const [takePayment, setTakePayment] = useState(false);
@@ -180,7 +182,14 @@ export function OpdNewPage() {
             detail: blankToUndefined(s.detail),
           }))
         : undefined,
-      charge: billCharge && charge ? chargeLinePayload(chargeDraft, charge.id) : undefined,
+      item:
+        billItem && hasItem
+          ? {
+              serviceId: service?.id,
+              serviceName: service ? undefined : typedName.trim(),
+              ...billLinePayload(itemDraft),
+            }
+          : undefined,
       payment: takePayment
         ? {
             amountMinor: toMinor(num(paymentAmount)),
@@ -429,60 +438,66 @@ export function OpdNewPage() {
         </div>
       </div>
 
-      {/* 4 — charge -------------------------------------------------------- */}
+      {/* 4 — billed item ------------------------------------------------------- */}
       <div className="card">
         <div className="section">
-          <h2>4 · Consultation charge</h2>
+          <h2>4 · Billed item</h2>
           <div className="check-row">
             <label>
               <input
                 type="checkbox"
-                checked={billCharge}
-                onChange={(e) => setBillCharge(e.target.checked)}
+                checked={billItem}
+                onChange={(e) => setBillItem(e.target.checked)}
               />
-              Bill a charge with this visit
+              Bill an item with this visit
             </label>
           </div>
 
-          {billCharge && (
+          {billItem && (
             <>
-              {charge ? (
+              {hasItem ? (
                 <div className="picked" style={{ marginBottom: 12 }}>
                   <span>
-                    <span className="picked-title">{charge.name}</span>
+                    <span className="picked-title">
+                      {service ? service.name : typedName.trim()}
+                    </span>
                     <div className="muted">
-                      {charge.chargeCategory.name}
-                      {charge.taxCategory ? ` · ${charge.taxCategory.name}` : ''}
+                      {service ? 'Service' : 'One-off item'}
                     </div>
                   </span>
                   <button
                     type="button"
                     className="secondary"
                     onClick={() => {
-                      setCharge(null);
-                      setChargeDraft(emptyChargeLineDraft);
+                      setService(null);
+                      setTypedName('');
+                      setItemDraft(emptyBillLineDraft);
                     }}
                   >
-                    Change charge
+                    Change
                   </button>
                 </div>
               ) : (
-                <ChargePicker
-                  chargeType="opd"
-                  onSelect={(c) => {
-                    setCharge(c);
-                    setChargeDraft(
-                      draftForCharge(c.standardChargeMinor, c.taxCategory?.rateBps),
-                    );
+                <ServicePicker
+                  department="opd"
+                  onSelect={(s) => {
+                    setService(s);
+                    setTypedName('');
+                    setItemDraft(draftForService(s.defaultPriceMinor));
+                  }}
+                  onSubmitText={(nm) => {
+                    setService(null);
+                    setTypedName(nm);
+                    setItemDraft(emptyBillLineDraft);
                   }}
                 />
               )}
 
-              {charge && (
-                <ChargeLineFields
-                  draft={chargeDraft}
-                  onChange={setChargeDraft}
-                  standardChargeMinor={charge.standardChargeMinor}
+              {hasItem && (
+                <BillLineFields
+                  draft={itemDraft}
+                  onChange={setItemDraft}
+                  suggestedPriceMinor={service?.defaultPriceMinor ?? null}
                 />
               )}
             </>

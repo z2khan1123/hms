@@ -118,16 +118,16 @@ export class OpdService {
         await this.replaceSymptoms(tx, tenantId, visit.id, input.symptoms);
       }
 
-      if (input.charge) {
-        await this.billing.addChargeItemInTx(tx, tenantId, createdById, {
+      if (input.item) {
+        await this.billing.addBillItemInTx(tx, tenantId, createdById, {
           caseId: kase.id,
           opdVisitId: visit.id,
-          chargeId: input.charge.chargeId,
-          appliedChargeMinor: input.charge.appliedChargeMinor,
-          quantity: input.charge.quantity,
-          discountBps: input.charge.discountBps,
-          discountMinor: input.charge.discountMinor,
-          taxBps: input.charge.taxBps,
+          serviceId: input.item.serviceId,
+          serviceName: input.item.serviceName,
+          priceMinor: input.item.priceMinor,
+          quantity: input.item.quantity,
+          discountBps: input.item.discountBps,
+          discountMinor: input.item.discountMinor,
         });
       }
 

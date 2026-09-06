@@ -12,13 +12,13 @@ import {
 
 /**
  * `caseSchema` reports a live balance, so the case always travels with its
- * charge lines and payments. Only the two columns the arithmetic needs are
+ * bill lines and payments. Only the two columns the arithmetic needs are
  * selected — the full ledger is a billing concern.
  */
 export const caseDetailInclude = {
   patient: { select: patientSummarySelect },
   tpa: { select: { id: true, name: true } },
-  chargeItems: { select: { netMinor: true } },
+  billItems: { select: { netMinor: true } },
   payments: { select: { amountMinor: true, reversedAt: true } },
   _count: { select: { opdVisits: true } },
 } as const;
@@ -29,11 +29,11 @@ export type CaseDetailRow = Prisma.CaseGetPayload<{
 
 /** Never sum money by hand — `computeCaseBalance` is shared with the web client. */
 export function balanceOf(row: {
-  chargeItems: { netMinor: number }[];
+  billItems: { netMinor: number }[];
   payments: { amountMinor: number; reversedAt: Date | null }[];
 }): CaseBalanceDto {
   return computeCaseBalance(
-    row.chargeItems,
+    row.billItems,
     row.payments.map((p) => ({
       amountMinor: p.amountMinor,
       reversedAt: toIsoDateTimeOrNull(p.reversedAt),

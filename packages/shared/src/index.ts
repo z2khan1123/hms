@@ -7,7 +7,7 @@ export * from './practitioner.js';
 export * from './appointment.js';
 export * from './tpa.js';
 export * from './case.js';
-export * from './charge-master.js';
+export * from './services.js';
 export * from './opd.js';
 export * from './billing.js';
 export * from './vitals.js';

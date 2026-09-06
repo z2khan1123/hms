@@ -4,13 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type ChargeItem, type Payment } from '@prisma/client';
+import { Prisma, type BillItem, type Payment } from '@prisma/client';
 import {
-  type AddChargeItemInput,
+  type AddBillItemInput,
+  type BillItem as BillItemDto,
   type CaseLedger,
-  type ChargeItem as ChargeItemDto,
+  computeBillLine,
   computeCaseBalance,
-  computeChargeLine,
   type CreatePaymentInput,
   type Payment as PaymentDto,
 } from '@hms/shared';
@@ -18,7 +18,7 @@ import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { parseIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CasesService } from '../cases/cases.service.js';
-import { toChargeItemDto, toPaymentDto } from './billing.mapper.js';
+import { toBillItemDto, toPaymentDto } from './billing.mapper.js';
 
 @Injectable()
 export class BillingService {
@@ -28,38 +28,55 @@ export class BillingService {
     private readonly cases: CasesService,
   ) {}
 
-  // --- charge items --------------------------------------------------------
+  // --- bill items --------------------------------------------------------
 
-  async addChargeItem(
+  async addBillItem(
     tenantId: string,
     createdById: string,
-    input: AddChargeItemInput,
-  ): Promise<ChargeItemDto> {
+    input: AddBillItemInput,
+  ): Promise<BillItemDto> {
     const created = await this.prisma.$transaction((tx) =>
-      this.addChargeItemInTx(tx, tenantId, createdById, input),
+      this.addBillItemInTx(tx, tenantId, createdById, input),
     );
-    return toChargeItemDto(created);
+    return toBillItemDto(created);
   }
 
   /**
-   * Snapshots the charge master row onto the line — name, department and list
-   * price — so editing a charge later never rewrites a bill that was already
-   * handed to a patient. All arithmetic goes through `computeChargeLine`, which
-   * the web client uses too.
+   * Snapshots the service's name, department and suggested price onto the line
+   * so later edits to the service list never rewrite a bill already handed to a
+   * patient. `priceMinor` from the caller is always what gets billed — the
+   * service's `defaultPriceMinor` is copied for reference only. When no
+   * `serviceId` is given the line is billed by name alone. All arithmetic goes
+   * through `computeBillLine`, which the web client uses too.
    */
-  async addChargeItemInTx(
+  async addBillItemInTx(
     tx: Prisma.TransactionClient,
     tenantId: string,
     createdById: string,
-    input: AddChargeItemInput,
-  ): Promise<ChargeItem> {
+    input: AddBillItemInput,
+  ): Promise<BillItem> {
     await this.cases.assertOpen(tx, tenantId, input.caseId);
 
-    const charge = await tx.charge.findFirst({
-      where: { id: input.chargeId, tenantId },
-      include: { chargeCategory: true, taxCategory: true },
-    });
-    if (!charge) throw new BadRequestException('Unknown charge');
+    let serviceId: string | null = null;
+    let serviceName: string;
+    let department = input.department ?? null;
+    let defaultPriceMinor: number | null = null;
+
+    if (input.serviceId) {
+      const service = await tx.service.findFirst({
+        where: { id: input.serviceId, tenantId },
+      });
+      if (!service) throw new BadRequestException('Unknown service');
+      serviceId = service.id;
+      serviceName = service.name;
+      department = input.department ?? service.department ?? null;
+      defaultPriceMinor = service.defaultPriceMinor;
+    } else {
+      if (!input.serviceName) {
+        throw new BadRequestException('A service name is required');
+      }
+      serviceName = input.serviceName;
+    }
 
     if (input.opdVisitId) {
       const visit = await tx.opdVisit.findFirst({
@@ -72,33 +89,26 @@ export class BillingService {
       }
     }
 
-    const appliedChargeMinor =
-      input.appliedChargeMinor ?? charge.standardChargeMinor;
-    const taxBps = input.taxBps ?? charge.taxCategory?.rateBps ?? 0;
-
-    const totals = computeChargeLine({
-      appliedChargeMinor,
+    const totals = computeBillLine({
+      priceMinor: input.priceMinor,
       quantity: input.quantity,
       discountBps: input.discountBps,
       discountMinor: input.discountMinor,
-      taxBps,
     });
 
-    return tx.chargeItem.create({
+    return tx.billItem.create({
       data: {
         tenantId,
         caseId: input.caseId,
         opdVisitId: input.opdVisitId ?? null,
-        chargeId: charge.id,
-        chargeName: charge.name,
-        chargeType: charge.chargeCategory.chargeType,
+        serviceId,
+        serviceName,
+        department,
         quantity: totals.quantity,
-        standardChargeMinor: charge.standardChargeMinor,
-        appliedChargeMinor,
+        defaultPriceMinor,
+        priceMinor: input.priceMinor,
         discountBps: totals.discountBps,
         discountMinor: totals.discountMinor,
-        taxBps: totals.taxBps,
-        taxMinor: totals.taxMinor,
         netMinor: totals.netMinor,
         note: input.note ?? null,
         createdById,
@@ -106,28 +116,28 @@ export class BillingService {
     });
   }
 
-  async listChargeItems(
+  async listBillItems(
     tenantId: string,
     caseId: string,
-  ): Promise<ChargeItemDto[]> {
+  ): Promise<BillItemDto[]> {
     await this.assertCaseExists(tenantId, caseId);
-    const rows = await this.prisma.chargeItem.findMany({
+    const rows = await this.prisma.billItem.findMany({
       where: { tenantId, caseId },
       orderBy: { chargedAt: 'asc' },
     });
-    return rows.map(toChargeItemDto);
+    return rows.map(toBillItemDto);
   }
 
   /** Allowed only while the case is open — a closed episode's bill is final. */
-  async removeChargeItem(tenantId: string, id: string): Promise<void> {
+  async removeBillItem(tenantId: string, id: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const item = await tx.chargeItem.findFirst({
+      const item = await tx.billItem.findFirst({
         where: { id, tenantId },
         select: { id: true, caseId: true },
       });
-      if (!item) throw new NotFoundException('Charge item not found');
+      if (!item) throw new NotFoundException('Bill item not found');
       await this.cases.assertOpen(tx, tenantId, item.caseId);
-      await tx.chargeItem.delete({ where: { id } });
+      await tx.billItem.delete({ where: { id } });
     });
   }
 
@@ -221,7 +231,7 @@ export class BillingService {
         id: true,
         caseNo: true,
         tenant: { select: { currency: true } },
-        chargeItems: { orderBy: { chargedAt: 'asc' } },
+        billItems: { orderBy: { chargedAt: 'asc' } },
         payments: { orderBy: { paidAt: 'asc' } },
       },
     });
@@ -231,21 +241,18 @@ export class BillingService {
     // hand-rolled sum; the stored columns were written by the same function.
     let grossMinor = 0;
     let discountMinor = 0;
-    let taxMinor = 0;
-    for (const item of kase.chargeItems) {
-      const line = computeChargeLine({
-        appliedChargeMinor: item.appliedChargeMinor,
+    for (const item of kase.billItems) {
+      const line = computeBillLine({
+        priceMinor: item.priceMinor,
         quantity: item.quantity,
         discountMinor: item.discountMinor,
-        taxBps: item.taxBps,
       });
       grossMinor += line.grossMinor;
       discountMinor += line.discountMinor;
-      taxMinor += line.taxMinor;
     }
 
     const balance = computeCaseBalance(
-      kase.chargeItems,
+      kase.billItems,
       kase.payments.map((p) => ({
         amountMinor: p.amountMinor,
         reversedAt: toIsoDateTimeOrNull(p.reversedAt),
@@ -256,11 +263,10 @@ export class BillingService {
       caseId: kase.id,
       caseNo: kase.caseNo,
       currency: kase.tenant.currency,
-      items: kase.chargeItems.map(toChargeItemDto),
+      items: kase.billItems.map(toBillItemDto),
       payments: kase.payments.map(toPaymentDto),
       grossMinor,
       discountMinor,
-      taxMinor,
       netMinor: balance.chargedMinor,
       paidMinor: balance.paidMinor,
       balanceMinor: balance.balanceMinor,

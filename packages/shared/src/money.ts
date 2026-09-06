@@ -18,37 +18,36 @@ export function bpsOf(amountMinor: number, bps: number): number {
   return roundHalfUp((amountMinor * bps) / BPS_DIVISOR);
 }
 
-export interface ChargeLineInput {
-  /** Price actually being billed, per unit, in minor units. */
-  appliedChargeMinor: number;
+export interface BillLineInput {
+  /** What this patient is actually charged, per unit, in minor units. */
+  priceMinor: number;
   quantity?: number;
   /** Percentage discount in basis points. Ignored when `discountMinor` is given. */
   discountBps?: number;
   /** Flat discount in minor units. Takes precedence over `discountBps`. */
   discountMinor?: number;
-  /** Tax rate in basis points, applied to the post-discount amount. */
-  taxBps?: number;
 }
 
-export interface ChargeLineTotals {
+export interface BillLineTotals {
   quantity: number;
   grossMinor: number;
   discountBps: number;
   discountMinor: number;
-  taxBps: number;
-  taxMinor: number;
   netMinor: number;
 }
 
 /**
- * gross = applied x quantity
+ * gross = price x quantity
  * discount = flat, or gross x discountBps
- * tax = (gross - discount) x taxBps
- * net = gross - discount + tax
+ * net = gross - discount
+ *
+ * There is deliberately no tax term: private clinics here do not charge tax on
+ * services, and a tax model nobody uses is a field everyone has to skip past.
+ * When it is needed it comes back as an explicit parameter, not a dormant column.
  */
-export function computeChargeLine(input: ChargeLineInput): ChargeLineTotals {
+export function computeBillLine(input: BillLineInput): BillLineTotals {
   const quantity = Math.max(1, Math.trunc(input.quantity ?? 1));
-  const grossMinor = input.appliedChargeMinor * quantity;
+  const grossMinor = input.priceMinor * quantity;
 
   const discountBps = input.discountBps ?? 0;
   const discountMinor =
@@ -56,18 +55,12 @@ export function computeChargeLine(input: ChargeLineInput): ChargeLineTotals {
       ? input.discountMinor
       : bpsOf(grossMinor, discountBps);
 
-  const taxableMinor = grossMinor - discountMinor;
-  const taxBps = input.taxBps ?? 0;
-  const taxMinor = bpsOf(taxableMinor, taxBps);
-
   return {
     quantity,
     grossMinor,
     discountBps,
     discountMinor,
-    taxBps,
-    taxMinor,
-    netMinor: taxableMinor + taxMinor,
+    netMinor: grossMinor - discountMinor,
   };
 }
 

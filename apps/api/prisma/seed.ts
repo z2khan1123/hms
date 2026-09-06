@@ -1,8 +1,8 @@
 import {
-  type ChargeTypeKind,
   PrismaClient,
   type Prisma,
   type Role,
+  type ServiceDepartment,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -49,9 +49,7 @@ async function main(): Promise<void> {
   await seedPractitioners(tenantId);
   await seedPatients(tenantId);
   await seedTpas(tenantId);
-  await seedTaxCategories(tenantId);
-  await seedUnitTypes(tenantId);
-  await seedChargeMaster(tenantId);
+  await seedServices(tenantId);
   await seedClinicalVocabulary(tenantId);
   await seedIcd10();
   await seedVitalTypes(tenantId);
@@ -205,126 +203,40 @@ async function seedTpas(tenantId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Charge master
+// Services — a flat list whose only job is to keep the NAME consistent for
+// reporting. `defaultPriceMinor` is a suggestion; the price billed is entered
+// on the patient's record. Prices are in paisa (PKR minor units): Rs 1,500 -> 150000.
 // ---------------------------------------------------------------------------
 
-async function seedTaxCategories(tenantId: string): Promise<void> {
-  const cats: { name: string; rateBps: number }[] = [
-    { name: 'None', rateBps: 0 },
-    { name: 'GST 16%', rateBps: 1600 },
-    { name: 'GST 18%', rateBps: 1800 },
+async function seedServices(tenantId: string): Promise<void> {
+  const services: {
+    name: string;
+    department: ServiceDepartment;
+    defaultPriceMinor: number;
+  }[] = [
+    { name: 'OPD Consultation', department: 'opd', defaultPriceMinor: 150000 },
+    { name: 'Follow-up Consultation', department: 'opd', defaultPriceMinor: 80000 },
+    { name: 'Specialist Consultation', department: 'opd', defaultPriceMinor: 300000 },
+    { name: 'Dressing', department: 'procedure', defaultPriceMinor: 50000 },
+    { name: 'Injection Administration', department: 'procedure', defaultPriceMinor: 30000 },
+    { name: 'Nebulisation', department: 'procedure', defaultPriceMinor: 60000 },
+    { name: 'ECG', department: 'procedure', defaultPriceMinor: 120000 },
+    { name: 'Stitch Removal', department: 'procedure', defaultPriceMinor: 40000 },
   ];
-  for (const c of cats) {
-    const found = await prisma.taxCategory.findFirst({
-      where: { tenantId, name: c.name },
+  for (const s of services) {
+    const found = await prisma.service.findFirst({
+      where: { tenantId, name: s.name },
     });
     if (!found) {
-      await prisma.taxCategory.create({
-        data: { tenantId, name: c.name, rateBps: c.rateBps },
+      await prisma.service.create({
+        data: {
+          tenantId,
+          name: s.name,
+          department: s.department,
+          defaultPriceMinor: s.defaultPriceMinor,
+        },
       });
     }
-  }
-}
-
-async function seedUnitTypes(tenantId: string): Promise<void> {
-  const names = ['per visit', 'per day', 'per hour', 'per session', 'per km'];
-  for (const name of names) {
-    const found = await prisma.unitType.findFirst({
-      where: { tenantId, name },
-    });
-    if (!found) await prisma.unitType.create({ data: { tenantId, name } });
-  }
-}
-
-async function ensureChargeCategory(
-  tenantId: string,
-  name: string,
-  chargeType: ChargeTypeKind,
-): Promise<string> {
-  const found = await prisma.chargeCategory.findFirst({
-    where: { tenantId, name, chargeType },
-  });
-  if (found) return found.id;
-  const created = await prisma.chargeCategory.create({
-    data: { tenantId, name, chargeType },
-  });
-  return created.id;
-}
-
-async function ensureCharge(
-  tenantId: string,
-  chargeCategoryId: string,
-  data: {
-    name: string;
-    standardChargeMinor: number;
-    unitTypeId: string | null;
-    taxCategoryId: string | null;
-  },
-): Promise<void> {
-  const found = await prisma.charge.findFirst({
-    where: { tenantId, name: data.name, chargeCategoryId },
-  });
-  if (found) return;
-  await prisma.charge.create({
-    data: {
-      tenantId,
-      chargeCategoryId,
-      unitTypeId: data.unitTypeId,
-      taxCategoryId: data.taxCategoryId,
-      name: data.name,
-      standardChargeMinor: data.standardChargeMinor,
-    },
-  });
-}
-
-async function seedChargeMaster(tenantId: string): Promise<void> {
-  const noneTax = await prisma.taxCategory.findFirst({
-    where: { tenantId, name: 'None' },
-  });
-  const perVisit = await prisma.unitType.findFirst({
-    where: { tenantId, name: 'per visit' },
-  });
-  const perSession = await prisma.unitType.findFirst({
-    where: { tenantId, name: 'per session' },
-  });
-
-  const consultationCat = await ensureChargeCategory(
-    tenantId,
-    'OPD Consultation',
-    'opd',
-  );
-  const procedureCat = await ensureChargeCategory(
-    tenantId,
-    'OPD Procedures',
-    'opd',
-  );
-
-  // Prices are in paisa (PKR minor units): Rs 1,500 -> 150000.
-  const consultations: { name: string; standardChargeMinor: number }[] = [
-    { name: 'OPD Consultation Fees', standardChargeMinor: 150000 },
-    { name: 'Follow-up Consultation', standardChargeMinor: 80000 },
-    { name: 'Specialist Consultation', standardChargeMinor: 300000 },
-  ];
-  const procedures: { name: string; standardChargeMinor: number }[] = [
-    { name: 'Dressing', standardChargeMinor: 50000 },
-    { name: 'Injection Administration', standardChargeMinor: 30000 },
-    { name: 'ECG', standardChargeMinor: 120000 },
-    { name: 'Nebulisation', standardChargeMinor: 60000 },
-  ];
-
-  for (const c of consultations) {
-    await ensureCharge(tenantId, consultationCat, {
-      ...c,
-      unitTypeId: perVisit?.id ?? null,
-      taxCategoryId: noneTax?.id ?? null,
-    });
-  }
-  for (const c of procedures) {
-    await ensureCharge(tenantId, procedureCat, {
-      ...c,
-      unitTypeId: perSession?.id ?? null,
-      taxCategoryId: noneTax?.id ?? null,
-    });
   }
 }
 

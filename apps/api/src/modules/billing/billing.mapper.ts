@@ -1,24 +1,22 @@
-import type { ChargeItem, Payment } from '@prisma/client';
-import type { ChargeItem as ChargeItemDto, Payment as PaymentDto } from '@hms/shared';
+import type { BillItem, Payment } from '@prisma/client';
+import type { BillItem as BillItemDto, Payment as PaymentDto } from '@hms/shared';
 import { toIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js';
 
-export function toChargeItemDto(c: ChargeItem): ChargeItemDto {
+export function toBillItemDto(b: BillItem): BillItemDto {
   return {
-    id: c.id,
-    chargeId: c.chargeId,
-    chargeName: c.chargeName,
-    chargeType: c.chargeType,
-    quantity: c.quantity,
-    standardChargeMinor: c.standardChargeMinor,
-    appliedChargeMinor: c.appliedChargeMinor,
-    discountBps: c.discountBps,
-    discountMinor: c.discountMinor,
-    taxBps: c.taxBps,
-    taxMinor: c.taxMinor,
-    netMinor: c.netMinor,
-    note: c.note,
-    chargedAt: c.chargedAt.toISOString(),
-    opdVisitId: c.opdVisitId,
+    id: b.id,
+    serviceId: b.serviceId,
+    serviceName: b.serviceName,
+    department: b.department,
+    quantity: b.quantity,
+    defaultPriceMinor: b.defaultPriceMinor,
+    priceMinor: b.priceMinor,
+    discountBps: b.discountBps,
+    discountMinor: b.discountMinor,
+    netMinor: b.netMinor,
+    note: b.note,
+    chargedAt: b.chargedAt.toISOString(),
+    opdVisitId: b.opdVisitId,
   };
 }
 

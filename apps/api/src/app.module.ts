@@ -18,7 +18,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module.j
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
 import { CasesModule } from './modules/cases/cases.module.js';
-import { ChargeMasterModule } from './modules/charge-master/charge-master.module.js';
+import { ServicesModule } from './modules/services/services.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
@@ -57,7 +57,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     PractitionersModule,
     AppointmentsModule,
     TpaModule,
-    ChargeMasterModule,
+    ServicesModule,
     VocabularyModule,
     CasesModule,
     BillingModule,

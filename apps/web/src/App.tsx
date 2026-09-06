@@ -12,7 +12,7 @@ import { OpdListPage } from './pages/OpdListPage';
 import { OpdNewPage } from './pages/OpdNewPage';
 import { OpdVisitPage } from './pages/OpdVisitPage';
 import { CaseBillingPage } from './pages/CaseBillingPage';
-import { ChargeMasterPage } from './pages/ChargeMasterPage';
+import { ServicesPage } from './pages/ServicesPage';
 
 export default function App() {
   return (
@@ -36,7 +36,7 @@ export default function App() {
         <Route path="opd/new" element={<OpdNewPage />} />
         <Route path="opd/:id" element={<OpdVisitPage />} />
         <Route path="cases/:id/billing" element={<CaseBillingPage />} />
-        <Route path="setup/charges" element={<ChargeMasterPage />} />
+        <Route path="setup/services" element={<ServicesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

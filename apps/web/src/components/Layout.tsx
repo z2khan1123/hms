@@ -13,7 +13,7 @@ export function Layout() {
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/appointments">Appointments</NavLink>
           <NavLink to="/opd">OPD</NavLink>
-          <NavLink to="/setup/charges">Setup</NavLink>
+          <NavLink to="/setup/services">Setup</NavLink>
         </nav>
         <div className="spacer" />
         <span className="user">

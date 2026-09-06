@@ -112,15 +112,19 @@ export const createOpdVisitSchema = z.object({
 
   symptoms: z.array(visitSymptomInput).max(30).optional(),
 
-  /** Optional consultation charge billed at registration. */
-  charge: z
+  /** Optional line billed at registration, e.g. the consultation fee. */
+  item: z
     .object({
-      chargeId: z.string().uuid(),
-      appliedChargeMinor: z.number().int().min(0),
+      serviceId: z.string().uuid().optional(),
+      serviceName: z.string().trim().min(1).max(160).optional(),
+      priceMinor: z.number().int().min(0),
       quantity: z.number().int().min(1).max(999).optional(),
       discountBps: z.number().int().min(0).max(10_000).optional(),
       discountMinor: z.number().int().min(0).optional(),
-      taxBps: z.number().int().min(0).max(100_000).optional(),
+    })
+    .refine((v) => !!v.serviceId || !!v.serviceName, {
+      message: 'Pick a service or enter a name',
+      path: ['serviceName'],
     })
     .optional(),
 

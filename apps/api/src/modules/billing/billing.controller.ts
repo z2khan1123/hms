@@ -9,8 +9,8 @@ import {
   Post,
 } from '@nestjs/common';
 import {
-  type AddChargeItemInput,
-  addChargeItemSchema,
+  type AddBillItemInput,
+  addBillItemSchema,
   type CreatePaymentInput,
   createPaymentSchema,
   reversePaymentSchema,
@@ -27,35 +27,35 @@ import { BillingService } from './billing.service.js';
 export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
-  // --- charge items --------------------------------------------------------
+  // --- bill items --------------------------------------------------------
 
-  @Post('charge-items')
-  @Permissions('charge:create')
-  addChargeItem(
+  @Post('bill-items')
+  @Permissions('bill:create')
+  addBillItem(
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(addChargeItemSchema)) dto: AddChargeItemInput,
+    @Body(new ZodValidationPipe(addBillItemSchema)) dto: AddBillItemInput,
   ) {
-    return this.billing.addChargeItem(requireTenant(user), user.id, dto);
+    return this.billing.addBillItem(requireTenant(user), user.id, dto);
   }
 
-  @Get('cases/:caseId/charge-items')
-  @Permissions('charge:read')
-  @Audit('billing.charge_items.list')
-  listChargeItems(
+  @Get('cases/:caseId/bill-items')
+  @Permissions('bill:read')
+  @Audit('bill.list')
+  listBillItems(
     @CurrentUser() user: AuthUser,
     @Param('caseId', ParseUUIDPipe) caseId: string,
   ) {
-    return this.billing.listChargeItems(requireTenant(user), caseId);
+    return this.billing.listBillItems(requireTenant(user), caseId);
   }
 
-  @Delete('charge-items/:id')
-  @Permissions('charge:delete')
+  @Delete('bill-items/:id')
+  @Permissions('bill:delete')
   @HttpCode(204)
-  async removeChargeItem(
+  async removeBillItem(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    await this.billing.removeChargeItem(requireTenant(user), id);
+    await this.billing.removeBillItem(requireTenant(user), id);
   }
 
   // --- payments ------------------------------------------------------------
@@ -71,7 +71,7 @@ export class BillingController {
 
   @Get('cases/:caseId/payments')
   @Permissions('payment:read')
-  @Audit('billing.payments.list')
+  @Audit('payment.list')
   listPayments(
     @CurrentUser() user: AuthUser,
     @Param('caseId', ParseUUIDPipe) caseId: string,
@@ -92,8 +92,8 @@ export class BillingController {
   // --- the bill ------------------------------------------------------------
 
   @Get('cases/:caseId/ledger')
-  @Permissions('charge:read')
-  @Audit('billing.ledger.read')
+  @Permissions('bill:read')
+  @Audit('bill.read')
   ledger(
     @CurrentUser() user: AuthUser,
     @Param('caseId', ParseUUIDPipe) caseId: string,

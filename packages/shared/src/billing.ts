@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isoDateSchema, isoDateTimeSchema } from './common.js';
-import { chargeTypeKindSchema } from './charge-master.js';
+import { serviceDepartmentSchema } from './services.js';
 
 export const paymentModeSchema = z.enum([
   'cash',
@@ -21,46 +21,54 @@ export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
   other: 'Other',
 };
 
-// --- charge items ----------------------------------------------------------
+// --- bill items ------------------------------------------------------------
 
-export const addChargeItemSchema = z
+/**
+ * A line on the patient's bill. Either pick a service from the list (`serviceId`,
+ * which keeps the name consistent for reporting) or type a one-off `serviceName`.
+ * `priceMinor` is always required and always what this patient is charged — the
+ * service's suggested price only pre-fills the field in the UI.
+ */
+export const addBillItemSchema = z
   .object({
     caseId: z.string().uuid(),
     opdVisitId: z.string().uuid().optional(),
-    chargeId: z.string().uuid(),
+    serviceId: z.string().uuid().optional(),
+    /** Required only when no `serviceId` is given. */
+    serviceName: z.string().trim().min(1).max(160).optional(),
+    department: serviceDepartmentSchema.optional(),
+    priceMinor: z.number().int().min(0),
     quantity: z.number().int().min(1).max(999).optional(),
-    /** Defaults to the charge's standard price when omitted. */
-    appliedChargeMinor: z.number().int().min(0).optional(),
     discountBps: z.number().int().min(0).max(10_000).optional(),
     discountMinor: z.number().int().min(0).optional(),
-    /** Defaults to the charge's tax category rate when omitted. */
-    taxBps: z.number().int().min(0).max(100_000).optional(),
     note: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => !!v.serviceId || !!v.serviceName, {
+    message: 'Pick a service or enter a name',
+    path: ['serviceName'],
   })
   .refine((v) => !(v.discountBps !== undefined && v.discountMinor !== undefined), {
     message: 'Give a percentage discount or a flat discount, not both',
     path: ['discountMinor'],
   });
-export type AddChargeItemInput = z.infer<typeof addChargeItemSchema>;
+export type AddBillItemInput = z.infer<typeof addBillItemSchema>;
 
-export const chargeItemSchema = z.object({
+export const billItemSchema = z.object({
   id: z.string().uuid(),
-  chargeId: z.string().uuid().nullable(),
-  chargeName: z.string(),
-  chargeType: chargeTypeKindSchema,
+  serviceId: z.string().uuid().nullable(),
+  serviceName: z.string(),
+  department: serviceDepartmentSchema.nullable(),
   quantity: z.number().int(),
-  standardChargeMinor: z.number().int(),
-  appliedChargeMinor: z.number().int(),
+  defaultPriceMinor: z.number().int().nullable(),
+  priceMinor: z.number().int(),
   discountBps: z.number().int(),
   discountMinor: z.number().int(),
-  taxBps: z.number().int(),
-  taxMinor: z.number().int(),
   netMinor: z.number().int(),
   note: z.string().nullable(),
   chargedAt: isoDateTimeSchema,
   opdVisitId: z.string().uuid().nullable(),
 });
-export type ChargeItem = z.infer<typeof chargeItemSchema>;
+export type BillItem = z.infer<typeof billItemSchema>;
 
 // --- payments --------------------------------------------------------------
 
@@ -107,11 +115,10 @@ export const caseLedgerSchema = z.object({
   caseId: z.string().uuid(),
   caseNo: z.string(),
   currency: z.string(),
-  items: z.array(chargeItemSchema),
+  items: z.array(billItemSchema),
   payments: z.array(paymentSchema),
   grossMinor: z.number().int(),
   discountMinor: z.number().int(),
-  taxMinor: z.number().int(),
   netMinor: z.number().int(),
   paidMinor: z.number().int(),
   balanceMinor: z.number().int(),

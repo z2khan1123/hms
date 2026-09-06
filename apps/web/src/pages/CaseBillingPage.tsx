@@ -3,33 +3,34 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import {
   PAYMENT_MODE_LABELS,
-  addChargeItemSchema,
+  SERVICE_DEPARTMENT_LABELS,
+  addBillItemSchema,
   createPaymentSchema,
   formatBps,
   formatMoney,
   reversePaymentSchema,
   toMajor,
   toMinor,
-  type AddChargeItemInput,
+  type AddBillItemInput,
   type Case,
   type CaseLedger,
-  type Charge,
   type CreatePaymentInput,
   type PaymentMode,
+  type Service,
 } from '@hms/shared';
 import { api } from '../lib/api';
 import { useCan } from '../lib/permissions';
 import {
-  chargeLinePayload,
-  chargeLineTotals,
-  draftForCharge,
-  emptyChargeLineDraft,
+  billLinePayload,
+  billLineTotals,
+  draftForService,
+  emptyBillLineDraft,
   num,
-  type ChargeLineDraft,
-} from '../lib/charge-line';
+  type BillLineDraft,
+} from '../lib/bill-line';
 import { blankToUndefined, formatDateTime } from '../lib/format';
-import { ChargeLineFields } from '../components/ChargeLineFields';
-import { ChargePicker } from '../components/ChargePicker';
+import { BillLineFields } from '../components/BillLineFields';
+import { ServicePicker } from '../components/ServicePicker';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
 
 /** No hospital name reaches the client from the contract; allow an env override. */
@@ -75,54 +76,64 @@ export function CaseBillingPage() {
     await queryClient.invalidateQueries({ queryKey: ['opd', 'visit'] });
   };
 
-  // --- add charge --------------------------------------------------------------
-  const [charge, setCharge] = useState<Charge | null>(null);
-  const [chargeDraft, setChargeDraft] = useState<ChargeLineDraft>(emptyChargeLineDraft);
-  const [chargeNote, setChargeNote] = useState('');
-  const [chargeIssues, setChargeIssues] = useState<string[]>([]);
-  const chargeTotals = useMemo(() => chargeLineTotals(chargeDraft), [chargeDraft]);
+  // --- add item -------------------------------------------------------------
+  const [service, setService] = useState<Service | null>(null);
+  const [typedName, setTypedName] = useState('');
+  const [itemDraft, setItemDraft] = useState<BillLineDraft>(emptyBillLineDraft);
+  const [itemNote, setItemNote] = useState('');
+  const [itemIssues, setItemIssues] = useState<string[]>([]);
+  const itemTotals = useMemo(() => billLineTotals(itemDraft), [itemDraft]);
+  const hasSelection = Boolean(service) || typedName.trim() !== '';
 
-  const addCharge = useMutation({
-    mutationFn: async (payload: AddChargeItemInput) => {
-      const { data } = await api.post('/billing/charge-items', payload);
+  function resetItemForm() {
+    setService(null);
+    setTypedName('');
+    setItemDraft(emptyBillLineDraft);
+    setItemNote('');
+    setItemIssues([]);
+  }
+
+  const addItem = useMutation({
+    mutationFn: async (payload: AddBillItemInput) => {
+      const { data } = await api.post('/billing/bill-items', payload);
       return data;
     },
     onSuccess: async () => {
-      setCharge(null);
-      setChargeDraft(emptyChargeLineDraft);
-      setChargeNote('');
-      setChargeIssues([]);
+      resetItemForm();
       await invalidate();
     },
   });
 
-  function onAddCharge(event: FormEvent) {
+  function onAddItem(event: FormEvent) {
     event.preventDefault();
-    setChargeIssues([]);
-    if (!charge) {
-      setChargeIssues(['Pick a charge first.']);
+    setItemIssues([]);
+    if (!hasSelection) {
+      setItemIssues(['Pick a service or type a name first.']);
       return;
     }
     const payload = {
       caseId: id,
-      ...chargeLinePayload(chargeDraft, charge.id),
-      note: blankToUndefined(chargeNote),
+      serviceId: service?.id,
+      serviceName: service ? undefined : typedName.trim(),
+      department: service?.department ?? undefined,
+      ...billLinePayload(itemDraft),
+      note: blankToUndefined(itemNote),
     };
-    const parsed = addChargeItemSchema.safeParse(payload);
+    const parsed = addBillItemSchema.safeParse(payload);
     if (!parsed.success) {
-      setChargeIssues(
+      setItemIssues(
         parsed.error.issues.map((i) =>
           i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message,
         ),
       );
       return;
     }
-    addCharge.mutate(parsed.data);
+    addItem.mutate(parsed.data);
   }
 
-  const deleteCharge = useMutation({
+  const deleteItem = useMutation({
     mutationFn: async (itemId: string) => {
-      await api.delete(`/billing/charge-items/${itemId}`);
+      await api.delete(`/billing/bill-items/${itemId}`);
     },
     onSuccess: invalidate,
   });
@@ -237,19 +248,18 @@ export function CaseBillingPage() {
 
       <div className="split">
         <div>
-          {/* charge items ------------------------------------------------------ */}
+          {/* bill items ------------------------------------------------------ */}
           <div className="card">
             <div className="section">
-              <h2>Charge items</h2>
+              <h2>Items</h2>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Item</th>
+                      <th>Service</th>
                       <th className="num">Qty</th>
-                      <th className="num">Applied</th>
+                      <th className="num">Price</th>
                       <th className="num">Discount</th>
-                      <th className="num">Tax</th>
                       <th className="num">Net</th>
                       <th className="no-print" />
                     </tr>
@@ -258,31 +268,25 @@ export function CaseBillingPage() {
                     {l.items.map((it) => (
                       <tr key={it.id}>
                         <td>
-                          {it.chargeName}
+                          {it.serviceName}
                           {it.note ? <div className="muted">{it.note}</div> : null}
                         </td>
                         <td className="num">{it.quantity}</td>
-                        <td className="num">{formatMoney(it.appliedChargeMinor, cur)}</td>
+                        <td className="num">{formatMoney(it.priceMinor, cur)}</td>
                         <td className="num">
                           {it.discountMinor > 0 ? `-${formatMoney(it.discountMinor, cur)}` : '—'}
                           {it.discountBps > 0 ? (
                             <div className="muted">{formatBps(it.discountBps)}</div>
                           ) : null}
                         </td>
-                        <td className="num">
-                          {formatMoney(it.taxMinor, cur)}
-                          {it.taxBps > 0 ? (
-                            <div className="muted">{formatBps(it.taxBps)}</div>
-                          ) : null}
-                        </td>
                         <td className="num">{formatMoney(it.netMinor, cur)}</td>
                         <td className="no-print">
-                          {can('charge:delete') && (
+                          {can('bill:delete') && (
                             <button
                               type="button"
                               className="secondary"
-                              disabled={deleteCharge.isPending}
-                              onClick={() => deleteCharge.mutate(it.id)}
+                              disabled={deleteItem.isPending}
+                              onClick={() => deleteItem.mutate(it.id)}
                             >
                               Delete
                             </button>
@@ -292,84 +296,90 @@ export function CaseBillingPage() {
                     ))}
                     {l.items.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="muted">
-                          No charges on this case yet.
+                        <td colSpan={6} className="muted">
+                          No items on this case yet.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              <ErrorNote error={deleteCharge.error} fallback="Could not delete the line" />
+              <ErrorNote error={deleteItem.error} fallback="Could not delete the line" />
             </div>
 
-            {can('charge:create') && (
+            {can('bill:create') && (
               <div className="section no-print">
-                <h2>Add a charge</h2>
-                {chargeIssues.length > 0 && (
+                <h2>Add an item</h2>
+                {itemIssues.length > 0 && (
                   <div className="alert" role="alert">
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
-                      {chargeIssues.map((i) => (
+                      {itemIssues.map((i) => (
                         <li key={i}>{i}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                <ErrorNote error={addCharge.error} fallback="Could not add the charge" />
-                <form onSubmit={onAddCharge} noValidate>
-                  {charge ? (
+                <ErrorNote error={addItem.error} fallback="Could not add the item" />
+                <form onSubmit={onAddItem} noValidate>
+                  {hasSelection ? (
                     <div className="picked" style={{ marginBottom: 12 }}>
                       <span>
-                        <span className="picked-title">{charge.name}</span>
+                        <span className="picked-title">
+                          {service ? service.name : typedName.trim()}
+                        </span>
                         <div className="muted">
-                          {charge.chargeCategory.name}
-                          {charge.taxCategory ? ` · ${charge.taxCategory.name}` : ''}
+                          {service
+                            ? service.department
+                              ? SERVICE_DEPARTMENT_LABELS[service.department]
+                              : 'Service'
+                            : 'One-off item'}
                         </div>
                       </span>
                       <button
                         type="button"
                         className="secondary"
-                        onClick={() => {
-                          setCharge(null);
-                          setChargeDraft(emptyChargeLineDraft);
-                        }}
+                        onClick={resetItemForm}
                       >
-                        Change charge
+                        Change
                       </button>
                     </div>
                   ) : (
-                    <ChargePicker
-                      onSelect={(c) => {
-                        setCharge(c);
-                        setChargeDraft(
-                          draftForCharge(c.standardChargeMinor, c.taxCategory?.rateBps),
-                        );
+                    <ServicePicker
+                      onSelect={(s) => {
+                        setService(s);
+                        setTypedName('');
+                        setItemDraft(draftForService(s.defaultPriceMinor));
+                      }}
+                      onSubmitText={(nm) => {
+                        setService(null);
+                        setTypedName(nm);
+                        setItemDraft(emptyBillLineDraft);
                       }}
                     />
                   )}
 
-                  {charge && (
+                  {hasSelection && (
                     <>
-                      <ChargeLineFields
-                        draft={chargeDraft}
-                        onChange={setChargeDraft}
-                        standardChargeMinor={charge.standardChargeMinor}
+                      <BillLineFields
+                        draft={itemDraft}
+                        onChange={setItemDraft}
+                        suggestedPriceMinor={service?.defaultPriceMinor ?? null}
                         currency={cur}
                       />
                       <div className="field" style={{ marginTop: 12 }}>
-                        <label htmlFor="chargeNote">Note</label>
+                        <label htmlFor="itemNote">Note</label>
                         <input
-                          id="chargeNote"
-                          value={chargeNote}
-                          onChange={(e) => setChargeNote(e.target.value)}
+                          id="itemNote"
+                          value={itemNote}
+                          onChange={(e) => setItemNote(e.target.value)}
                         />
                       </div>
                       <div className="row" style={{ marginTop: 8 }}>
-                        <button type="submit" disabled={addCharge.isPending}>
-                          {addCharge.isPending ? 'Adding…' : 'Add charge'}
+                        <button type="submit" disabled={addItem.isPending}>
+                          {addItem.isPending ? 'Adding…' : 'Add item'}
                         </button>
                         <span className="muted">
-                          Net to add {formatMoney(chargeTotals.netMinor, cur)}
+                          Net to add {formatMoney(itemTotals.netMinor, cur)}
                         </span>
                       </div>
                     </>
@@ -587,8 +597,6 @@ export function CaseBillingPage() {
               <dd>{formatMoney(l.grossMinor, cur)}</dd>
               <dt>Discount</dt>
               <dd>-{formatMoney(l.discountMinor, cur)}</dd>
-              <dt>Tax</dt>
-              <dd>{formatMoney(l.taxMinor, cur)}</dd>
               <div className="totals-divider" />
               <dt>Net</dt>
               <dd>{formatMoney(l.netMinor, cur)}</dd>

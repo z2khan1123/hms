@@ -1,55 +1,58 @@
 import { useId } from 'react';
 import { formatMoney } from '@hms/shared';
-import { chargeLineTotals, type ChargeLineDraft } from '../lib/charge-line';
+import {
+  billLineTotals,
+  priceMinorOf,
+  type BillLineDraft,
+} from '../lib/bill-line';
 
 /**
- * The standard -> applied -> discount -> tax -> net line every billing module
- * shares. Totals come straight from `computeChargeLine`, so what the screen shows
- * is exactly what the API will store.
+ * The price -> quantity -> discount -> net line every billing screen shares.
+ * Totals come straight from `computeBillLine`, so what the screen shows is exactly
+ * what the API will store. There is no tax field.
  */
-export function ChargeLineFields({
+export function BillLineFields({
   draft,
   onChange,
-  standardChargeMinor,
+  suggestedPriceMinor,
   currency = 'PKR',
   disabled,
 }: {
-  draft: ChargeLineDraft;
-  onChange: (draft: ChargeLineDraft) => void;
-  standardChargeMinor: number | null;
+  draft: BillLineDraft;
+  onChange: (draft: BillLineDraft) => void;
+  /** The picked service's suggested price, shown as a quiet hint when it differs. */
+  suggestedPriceMinor: number | null;
   currency?: string;
   disabled?: boolean;
 }) {
   const uid = useId();
-  const totals = chargeLineTotals(draft);
-  const set = (patch: Partial<ChargeLineDraft>) => onChange({ ...draft, ...patch });
+  const totals = billLineTotals(draft);
+  const set = (patch: Partial<BillLineDraft>) => onChange({ ...draft, ...patch });
+
+  const showSuggestion =
+    suggestedPriceMinor != null &&
+    draft.priceMajor.trim() !== '' &&
+    priceMinorOf(draft) !== suggestedPriceMinor;
 
   return (
     <>
-      <div className="form-grid-4">
+      <div className="form-grid-3">
         <div className="field">
-          <label htmlFor={`${uid}-standard`}>Standard charge</label>
+          <label htmlFor={`${uid}-price`}>Price ({currency})</label>
           <input
-            id={`${uid}-standard`}
-            readOnly
-            disabled={disabled}
-            value={
-              standardChargeMinor == null ? '—' : formatMoney(standardChargeMinor, currency)
-            }
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={`${uid}-applied`}>Applied charge</label>
-          <input
-            id={`${uid}-applied`}
+            id={`${uid}-price`}
             type="number"
             min="0"
             step="0.01"
             disabled={disabled}
-            value={draft.appliedMajor}
-            onChange={(e) => set({ appliedMajor: e.target.value })}
+            value={draft.priceMajor}
+            onChange={(e) => set({ priceMajor: e.target.value })}
           />
-          <span className="hint">Override for negotiated or panel pricing.</span>
+          <span className="hint">
+            {showSuggestion
+              ? `suggested ${formatMoney(suggestedPriceMinor, currency)}`
+              : 'The price on the patient’s file is what is charged.'}
+          </span>
         </div>
         <div className="field">
           <label htmlFor={`${uid}-qty`}>Quantity</label>
@@ -65,21 +68,6 @@ export function ChargeLineFields({
           />
         </div>
         <div className="field">
-          <label htmlFor={`${uid}-tax`}>Tax %</label>
-          <input
-            id={`${uid}-tax`}
-            type="number"
-            min="0"
-            step="0.01"
-            disabled={disabled}
-            value={draft.taxPercent}
-            onChange={(e) => set({ taxPercent: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="form-grid">
-        <div className="field">
           <label htmlFor={`${uid}-discount-mode`}>Discount type</label>
           <select
             id={`${uid}-discount-mode`}
@@ -93,6 +81,9 @@ export function ChargeLineFields({
             <option value="flat">Flat amount</option>
           </select>
         </div>
+      </div>
+
+      <div className="form-grid">
         <div className="field">
           <label htmlFor={`${uid}-discount`}>
             Discount {draft.discountMode === 'percent' ? '%' : `(${currency})`}
@@ -115,9 +106,6 @@ export function ChargeLineFields({
         </span>
         <span>
           Discount <strong>-{formatMoney(totals.discountMinor, currency)}</strong>
-        </span>
-        <span>
-          Tax <strong>{formatMoney(totals.taxMinor, currency)}</strong>
         </span>
         <span>
           Net <strong>{formatMoney(totals.netMinor, currency)}</strong>

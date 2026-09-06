@@ -89,7 +89,7 @@ export function SearchSelect<T>({
     }
   }
 
-  // Open on focus when the caller already has options to browse (e.g. the charge
+  // Open on focus when the caller already has options to browse (e.g. the service
   // list); otherwise wait until there is something to search for.
   const showList = open && (query.trim().length > 0 || items.length > 0);
 
