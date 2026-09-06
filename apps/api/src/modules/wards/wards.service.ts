@@ -25,6 +25,7 @@ import {
   toWardDto,
   wardInclude,
 } from './wards.mapper.js';
+import { compareNatural } from '../../common/util/natural-sort.js';
 
 export interface BedListFilter {
   wardId?: string;
@@ -246,7 +247,11 @@ export class WardsService {
       orderBy: [{ ward: { name: 'asc' } }, { name: 'asc' }],
       take: LIST_LIMIT,
     });
-    const dtos = rows.map(toBedDto);
+    // Ward numbering is physical: GF-9 sits before GF-10.
+    const dtos = rows.map(toBedDto).sort((a, b) => {
+      const byWard = a.ward.name.localeCompare(b.ward.name);
+      return byWard !== 0 ? byWard : compareNatural(a.name, b.name);
+    });
     return filter.status
       ? dtos.filter((b) => b.status === filter.status)
       : dtos;

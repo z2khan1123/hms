@@ -8,6 +8,7 @@ import {
   type Floor as FloorDto,
   type Ward as WardDto,
 } from '@hms/shared';
+import { byNaturalName } from '../../common/util/natural-sort.js';
 
 export function toFloorDto(f: Floor): FloorDto {
   return {
@@ -143,12 +144,16 @@ export function toBedBoard(floors: BoardFloorRow[]): BedBoard {
     wards: f.wards.map((w) => ({
       id: w.id,
       name: w.name,
-      beds: w.beds.map((bed) => {
-        const dto = toBedDto(bed);
-        totals.total += 1;
-        totals[dto.status] += 1;
-        return dto;
-      }),
+      // Ward numbering is physical: GF-9 sits before GF-10, so plain
+      // alphabetical ordering would read as broken on the board.
+      beds: w.beds
+        .map((bed) => {
+          const dto = toBedDto(bed);
+          totals.total += 1;
+          totals[dto.status] += 1;
+          return dto;
+        })
+        .sort(byNaturalName),
     })),
   }));
 
