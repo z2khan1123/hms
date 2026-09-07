@@ -15,6 +15,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { BillingService } from '../billing/billing.service.js';
 import { CasesService } from '../cases/cases.service.js';
+import { findOrCreateReportInTx } from '../diagnostics/report-provisioning.js';
 import { serviceOrderInclude, toServiceOrderDto } from './orders.mapper.js';
 
 export interface ServiceOrderListFilter {
@@ -28,12 +29,15 @@ export interface ServiceOrderListFilter {
 }
 
 /**
- * ordered -> in_progress -> completed, plus cancellation off any live state.
- * `completed` is only reachable through `in_progress`, so the releasability gate
- * on the `in_progress` hop can never be skipped.
+ * ordered -> [sample_collected ->] in_progress -> completed, plus cancellation
+ * off any live state. `completed` is only reachable through `in_progress`, so the
+ * releasability gate on the `in_progress` hop can never be skipped. The
+ * `ordered -> sample_collected` hop has its own route (`POST
+ * /orders/:id/collect-sample`) which applies the same releasability gate.
  */
 const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
   ordered: ['in_progress', 'cancelled'],
+  sample_collected: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'cancelled'],
   completed: [],
   cancelled: [],
@@ -186,6 +190,66 @@ export class OrdersService {
     });
     if (!found) throw new NotFoundException('Order not found');
     return toServiceOrderDto(found);
+  }
+
+  /**
+   * Record that the specimen has been taken. Allowed only from `ordered`, and
+   * only when the order is releasable (paid or approved without payment) — the
+   * same gate as starting work; otherwise 409. Moves the order to
+   * `sample_collected` and stamps the collection on the report row, creating
+   * that row if it does not exist yet.
+   */
+  async collectSample(
+    tenantId: string,
+    actorId: string,
+    id: string,
+    collectedAt: string | undefined,
+  ): Promise<ServiceOrderDto> {
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.serviceOrder.findFirst({
+        where: { id, tenantId },
+        select: {
+          id: true,
+          status: true,
+          serviceId: true,
+          caseId: true,
+          patientId: true,
+          department: true,
+          billItem: {
+            select: { status: true, approvedWithoutPayment: true },
+          },
+        },
+      });
+      if (!order) throw new NotFoundException('Order not found');
+
+      if (order.status !== 'ordered') {
+        throw new ConflictException(
+          `Cannot collect a sample for a ${order.status} order`,
+        );
+      }
+
+      const releasable = isReleasable({
+        billStatus: order.billItem?.status ?? null,
+        approvedWithoutPayment: order.billItem?.approvedWithoutPayment ?? false,
+      });
+      if (!releasable) {
+        throw new ConflictException(
+          'This order has not been paid for. Send the patient to the billing ' +
+            'counter to pay or have it approved before collecting a sample.',
+        );
+      }
+
+      const when = collectedAt ? new Date(collectedAt) : new Date();
+      await tx.serviceOrder.update({
+        where: { id },
+        data: { status: 'sample_collected' },
+      });
+      await findOrCreateReportInTx(tx, tenantId, order, {
+        sampleCollectedAt: when,
+        sampleCollectedById: actorId,
+      });
+    });
+    return this.get(tenantId, id);
   }
 
   /**

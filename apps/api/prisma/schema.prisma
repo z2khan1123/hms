@@ -115,6 +115,8 @@ enum BillItemStatus {
 /// linked bill item (paid, or approved without payment) — never duplicated here.
 enum ServiceOrderStatus {
   ordered
+  /// Specimen taken. Meaningless for imaging, which goes straight to in_progress.
+  sample_collected
   in_progress
   completed
   cancelled
@@ -134,6 +136,13 @@ enum AdmissionStatus {
   admitted
   discharged
   cancelled
+}
+
+/// How serious a recorded allergy is. Drives how loudly the prescriber is warned.
+enum AllergySeverity {
+  mild
+  moderate
+  severe
 }
 
 enum VitalFlag {
@@ -162,44 +171,56 @@ model Tenant {
   timezone String @default("Asia/Karachi")
 
   // Human-facing document numbers. Prefix + zero-padded per-tenant counter.
-  mrnPrefix     String @default("MRN")
-  mrnSeq        Int    @default(0)
-  casePrefix    String @default("CASE")
-  caseSeq       Int    @default(0)
-  opdPrefix     String @default("OPD")
-  opdSeq        Int    @default(0)
-  receiptPrefix String @default("RCPT")
-  receiptSeq    Int    @default(0)
+  mrnPrefix       String @default("MRN")
+  mrnSeq          Int    @default(0)
+  casePrefix      String @default("CASE")
+  caseSeq         Int    @default(0)
+  opdPrefix       String @default("OPD")
+  opdSeq          Int    @default(0)
+  receiptPrefix   String @default("RCPT")
+  receiptSeq      Int    @default(0)
   admissionPrefix String @default("IPD")
   admissionSeq    Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users             User[]
-  patients          Patient[]
-  practitioners     Practitioner[]
-  appointments      Appointment[]
-  tpas              Tpa[]
-  cases             Case[]
-  opdVisits         OpdVisit[]
-  services          Service[]
-  billItems         BillItem[]
-  payments          Payment[]
-  symptomTypes      SymptomType[]
-  symptoms          Symptom[]
-  findings          Finding[]
-  vitalTypes        VitalType[]
-  vitalReadings     VitalReading[]
-  serviceOrders     ServiceOrder[]
-  prescriptionItems PrescriptionItem[]
-  floors            Floor[]
-  wards             Ward[]
-  bedTypes          BedType[]
-  beds              Bed[]
-  admissions        Admission[]
-  bedAssignments    BedAssignment[]
-  nurseNotes        NurseNote[]
+  users                 User[]
+  patients              Patient[]
+  practitioners         Practitioner[]
+  appointments          Appointment[]
+  tpas                  Tpa[]
+  cases                 Case[]
+  opdVisits             OpdVisit[]
+  services              Service[]
+  billItems             BillItem[]
+  payments              Payment[]
+  symptomTypes          SymptomType[]
+  symptoms              Symptom[]
+  findings              Finding[]
+  vitalTypes            VitalType[]
+  vitalReadings         VitalReading[]
+  serviceOrders         ServiceOrder[]
+  prescriptionItems     PrescriptionItem[]
+  floors                Floor[]
+  wards                 Ward[]
+  bedTypes              BedType[]
+  beds                  Bed[]
+  admissions            Admission[]
+  bedAssignments        BedAssignment[]
+  nurseNotes            NurseNote[]
+  labTests              LabTest[]
+  labTestParameters     LabTestParameter[]
+  diagnosticReports     DiagnosticReport[]
+  diagnosticValues      DiagnosticValue[]
+  medicineCategories    MedicineCategory[]
+  medicines             Medicine[]
+  medicineBatches       MedicineBatch[]
+  medicinePurchases     MedicinePurchase[]
+  medicinePurchaseItems MedicinePurchaseItem[]
+  dispenses             Dispense[]
+  dispenseItems         DispenseItem[]
+  patientAllergies      PatientAllergy[]
 }
 
 model User {
@@ -298,12 +319,15 @@ model Patient {
   updatedAt DateTime      @updatedAt
   deletedAt DateTime?
 
-  appointments  Appointment[]
-  cases         Case[]
-  opdVisits     OpdVisit[]
-  vitalReadings VitalReading[]
-  serviceOrders ServiceOrder[]
-  admissions    Admission[]
+  appointments      Appointment[]
+  cases             Case[]
+  opdVisits         OpdVisit[]
+  vitalReadings     VitalReading[]
+  serviceOrders     ServiceOrder[]
+  admissions        Admission[]
+  diagnosticReports DiagnosticReport[]
+  dispenses         Dispense[]
+  allergies         PatientAllergy[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
@@ -391,12 +415,14 @@ model Case {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  opdVisits     OpdVisit[]
-  billItems     BillItem[]
-  payments      Payment[]
-  vitalReadings VitalReading[]
-  serviceOrders ServiceOrder[]
-  admissions    Admission[]
+  opdVisits         OpdVisit[]
+  billItems         BillItem[]
+  payments          Payment[]
+  vitalReadings     VitalReading[]
+  serviceOrders     ServiceOrder[]
+  admissions        Admission[]
+  diagnosticReports DiagnosticReport[]
+  dispenses         Dispense[]
 
   @@unique([tenantId, caseNo])
   @@index([tenantId, patientId, openedAt])
@@ -432,6 +458,7 @@ model Service {
 
   billItems     BillItem[]
   serviceOrders ServiceOrder[]
+  labTest       LabTest?
 
   @@unique([tenantId, name])
   @@index([tenantId, department])
@@ -558,6 +585,7 @@ model OpdVisit {
   serviceOrders     ServiceOrder[]
   prescriptionItems PrescriptionItem[]
   admission         Admission?
+  dispenses         Dispense[]
 
   @@unique([tenantId, opdNo])
   @@index([tenantId, visitAt])
@@ -652,6 +680,8 @@ model ServiceOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  report DiagnosticReport?
+
   @@index([tenantId, status])
   @@index([tenantId, department, status])
   @@index([tenantId, patientId, orderedAt])
@@ -666,6 +696,11 @@ model PrescriptionItem {
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
   opdVisitId String   @db.Uuid
   opdVisit   OpdVisit @relation(fields: [opdVisitId], references: [id], onDelete: Cascade)
+
+  /// Optional link to the medicine master. Free text still works — this is
+  /// what lets prescribing check against the patient's recorded allergies.
+  medicineId String?   @db.Uuid
+  medicine   Medicine? @relation(fields: [medicineId], references: [id])
 
   drugName     String
   dose         String?
@@ -805,6 +840,7 @@ model Admission {
   bedAssignments BedAssignment[]
   nurseNotes     NurseNote[]
   vitalReadings  VitalReading[]
+  dispenses      Dispense[]
 
   @@unique([tenantId, admissionNo])
   @@index([tenantId, status])
@@ -847,6 +883,347 @@ model NurseNote {
   createdAt    DateTime @default(now())
 
   @@index([tenantId, admissionId, recordedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics — the test catalogue and its reports
+//
+// FHIR: LabTest maps to ObservationDefinition, DiagnosticReport and
+// DiagnosticValue to DiagnosticReport and Observation.
+//
+// A report has NO status of its own. The ServiceOrder it belongs to carries the
+// single work state; whether a result exists and whether `reportedAt` is set
+// says the rest. Two statuses on one piece of work is how a worklist starts
+// disagreeing with itself.
+// ---------------------------------------------------------------------------
+
+/// What a billable service actually measures. Pathology tests carry parameters;
+/// imaging usually carries none and is reported as narrative findings.
+model LabTest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// The billable service this defines. One service, at most one definition.
+  serviceId String?  @unique @db.Uuid
+  service   Service? @relation(fields: [serviceId], references: [id])
+
+  name       String
+  department ServiceDepartment
+  /// Blood, Urine, Sputum … null for imaging.
+  sampleType String?
+  method     String?
+  isActive   Boolean           @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parameters LabTestParameter[]
+  reports    DiagnosticReport[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, department])
+}
+
+model LabTestParameter {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  labTestId String  @db.Uuid
+  labTest   LabTest @relation(fields: [labTestId], references: [id], onDelete: Cascade)
+
+  name      String
+  unit      String?
+  /// Numeric range for flagging. Null on both means "do not flag".
+  refLow    Float?
+  refHigh   Float?
+  /// Where a range is not numeric, e.g. "Negative" or "Straw coloured".
+  refText   String?
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  values DiagnosticValue[]
+
+  @@unique([labTestId, name])
+  @@index([tenantId, labTestId])
+}
+
+model DiagnosticReport {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// One report per order. The order holds the status.
+  serviceOrderId String       @unique @db.Uuid
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+  caseId    String  @db.Uuid
+  case      Case    @relation(fields: [caseId], references: [id])
+
+  labTestId String?  @db.Uuid
+  labTest   LabTest? @relation(fields: [labTestId], references: [id])
+
+  department ServiceDepartment
+
+  sampleCollectedAt   DateTime?
+  sampleCollectedById String?   @db.Uuid
+
+  /// Narrative reporting, used by imaging and available to pathology.
+  findings   String?
+  impression String?
+  comments   String?
+
+  reportedAt   DateTime?
+  reportedById String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  values DiagnosticValue[]
+
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, department])
+  @@index([tenantId, caseId])
+}
+
+/// One measured value. Name, unit and reference range are SNAPSHOTTED so that
+/// editing the catalogue later never rewrites a report that has been handed to
+/// a patient.
+model DiagnosticValue {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  reportId String           @db.Uuid
+  report   DiagnosticReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  parameterId String?           @db.Uuid
+  parameter   LabTestParameter? @relation(fields: [parameterId], references: [id])
+
+  name        String
+  unit        String?
+  valueText   String?
+  valueNumber Float?
+  flag        VitalFlag?
+  refLow      Float?
+  refHigh     Float?
+  refText     String?
+  sortOrder   Int        @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, reportId])
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacy — medicine master, stock by batch, purchases and dispensing
+// ---------------------------------------------------------------------------
+
+model MedicineCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  medicines Medicine[]
+
+  @@unique([tenantId, name])
+}
+
+model Medicine {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  genericName String?
+  categoryId  String?           @db.Uuid
+  category    MedicineCategory? @relation(fields: [categoryId], references: [id])
+  company     String?
+  /// e.g. 500mg, 5mg/5ml
+  strength    String?
+  /// The unit stock is counted in: tablet, capsule, bottle, vial.
+  unit        String?
+
+  /// Warn when total stock falls to or below this.
+  reorderLevel Int?
+
+  /// Substances this contains, for checking against a patient's recorded
+  /// allergies at prescribing time. Free keywords rather than a coded
+  /// terminology — honest about what it is, and still catches "penicillin"
+  /// written in a doctor's own words.
+  allergenKeywords String[] @default([])
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches           MedicineBatch[]
+  purchaseItems     MedicinePurchaseItem[]
+  dispenseItems     DispenseItem[]
+  prescriptionItems PrescriptionItem[]
+
+  @@unique([tenantId, name, strength])
+  @@index([tenantId, genericName])
+  @@index([tenantId, categoryId])
+}
+
+/// Stock is held per batch because expiry is per batch. Quantity on hand lives
+/// here and nowhere else, so there is one number to be right.
+model MedicineBatch {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  medicineId String   @db.Uuid
+  medicine   Medicine @relation(fields: [medicineId], references: [id])
+
+  batchNo    String
+  expiryDate DateTime @db.Date
+
+  /// Units currently on hand in this batch.
+  quantity Int @default(0)
+
+  purchasePriceMinor Int?
+  salePriceMinor     Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dispenseItems DispenseItem[]
+
+  @@unique([tenantId, medicineId, batchNo])
+  @@index([tenantId, expiryDate])
+  @@index([tenantId, medicineId])
+}
+
+model MedicinePurchase {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  supplierName String
+  invoiceNo    String?
+  purchasedAt  DateTime @default(now())
+  note         String?
+
+  totalMinor  Int      @default(0)
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items MedicinePurchaseItem[]
+
+  @@index([tenantId, purchasedAt])
+}
+
+model MedicinePurchaseItem {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @db.Uuid
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  purchaseId String           @db.Uuid
+  purchase   MedicinePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  medicineId String           @db.Uuid
+  medicine   Medicine         @relation(fields: [medicineId], references: [id])
+
+  batchNo            String
+  expiryDate         DateTime @db.Date
+  quantity           Int
+  purchasePriceMinor Int
+  salePriceMinor     Int?
+  lineTotalMinor     Int
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, purchaseId])
+}
+
+/// One handover of medicine to a patient. Bills onto the same Case as
+/// everything else, so a stay produces one bill and not several.
+model Dispense {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  caseId    String  @db.Uuid
+  case      Case    @relation(fields: [caseId], references: [id])
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  opdVisitId  String?    @db.Uuid
+  opdVisit    OpdVisit?  @relation(fields: [opdVisitId], references: [id])
+  admissionId String?    @db.Uuid
+  admission   Admission? @relation(fields: [admissionId], references: [id])
+
+  /// The charge this created. One dispense, one line on the bill.
+  billItemId String?   @unique @db.Uuid
+  billItem   BillItem? @relation(fields: [billItemId], references: [id])
+
+  dispensedAt   DateTime @default(now())
+  dispensedById String?  @db.Uuid
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items DispenseItem[]
+
+  @@index([tenantId, patientId, dispensedAt])
+  @@index([tenantId, caseId])
+}
+
+model DispenseItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  dispenseId String   @db.Uuid
+  dispense   Dispense @relation(fields: [dispenseId], references: [id], onDelete: Cascade)
+
+  medicineId String        @db.Uuid
+  medicine   Medicine      @relation(fields: [medicineId], references: [id])
+  batchId    String        @db.Uuid
+  batch      MedicineBatch @relation(fields: [batchId], references: [id])
+
+  /// Snapshotted so renaming a medicine never rewrites a past handover.
+  medicineName   String
+  batchNo        String
+  quantity       Int
+  unitPriceMinor Int
+  lineTotalMinor Int
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, dispenseId])
+}
+
+/// A patient's allergies, recorded properly rather than as one free-text blob,
+/// so prescribing can actually check against them. The blob on Patient stays
+/// as the doctor's own words; this is what the software reasons over.
+model PatientAllergy {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  substance String
+  reaction  String?
+  severity  AllergySeverity @default(moderate)
+
+  recordedAt   DateTime @default(now())
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, patientId, substance])
+  @@index([tenantId, patientId])
 }
 
 // ---------------------------------------------------------------------------
@@ -949,6 +1326,7 @@ model BillItem {
   updatedAt   DateTime @updatedAt
 
   serviceOrder ServiceOrder?
+  dispense     Dispense?
 
   @@index([tenantId, caseId])
   @@index([tenantId, opdVisitId])

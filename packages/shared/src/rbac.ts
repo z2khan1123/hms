@@ -74,6 +74,11 @@ export const PERMISSIONS = [
   /// start / complete an order in a department worklist
   'order:update',
   'order:cancel',
+  // diagnostics catalogue and reports
+  'labtest:read',
+  'labtest:manage',
+  'report:read',
+  'report:write',
   // prescriptions
   'prescription:read',
   'prescription:write',
@@ -120,6 +125,8 @@ const READ_ONLY_SET: Permission[] = [
   'ward:read',
   'admission:read',
   'nursenote:read',
+  'labtest:read',
+  'report:read',
 ];
 
 /**
@@ -186,6 +193,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'order:create',
     'order:read',
     'order:cancel',
+    // He ordered the test; he must be able to read what came back.
+    'labtest:read',
+    'report:read',
     'bill:discount',
     'prescription:read',
     'prescription:write',
@@ -215,6 +225,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'admission:transfer',
     'nursenote:read',
     'nursenote:write',
+    'report:read',
   ],
 
   accountant: [
@@ -241,10 +252,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   pathologist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'order:update', 'prescription:read',
+    'labtest:read', 'labtest:manage', 'report:read', 'report:write',
   ],
   radiologist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'order:update', 'prescription:read',
+    'labtest:read', 'labtest:manage', 'report:read', 'report:write',
   ],
   pharmacist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',

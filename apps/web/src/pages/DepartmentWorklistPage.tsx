@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   BILL_ITEM_STATUS_LABELS,
   SERVICE_ORDER_STATUS_LABELS,
+  collectSampleSchema,
   setServiceOrderStatusSchema,
   type ServiceOrder,
   type ServiceOrderStatus,
@@ -34,6 +35,7 @@ export function DepartmentWorklistPage() {
   const can = useCan();
   const queryClient = useQueryClient();
   const canUpdate = can('order:update');
+  const canReadReports = can('report:read');
 
   const [dept, setDept] = useState<DeptFilter>('');
   const [showBlocked, setShowBlocked] = useState(false);
@@ -78,6 +80,28 @@ export function DepartmentWorklistPage() {
       }),
   });
 
+  const collectSample = useMutation({
+    mutationFn: async (input: { id: string }) => {
+      const body = collectSampleSchema.parse({});
+      const { data } = await api.post<ServiceOrder>(
+        `/orders/${input.id}/collect-sample`,
+        body,
+      );
+      return data;
+    },
+    onMutate: () => setRowError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      await queryClient.invalidateQueries({ queryKey: ['opd', 'list'] });
+    },
+    onError: (err, vars) =>
+      setRowError({
+        id: vars.id,
+        message: apiErrorMessage(err, 'Could not collect the sample'),
+      }),
+  });
+
+  const busy = setStatus.isPending || collectSample.isPending;
   const rows = orders.data ?? [];
 
   return (
@@ -128,8 +152,11 @@ export function DepartmentWorklistPage() {
           <tbody>
             {rows.map((o) => {
               const blocked = !o.releasable;
-              const showStart = o.status === 'ordered';
+              const showCollect = o.status === 'ordered';
+              const showStart =
+                o.status === 'ordered' || o.status === 'sample_collected';
               const showComplete = o.status === 'in_progress';
+              const showResult = canReadReports && o.releasable && o.status !== 'cancelled';
               return (
                 <tr key={o.id}>
                   <td>
@@ -155,34 +182,45 @@ export function DepartmentWorklistPage() {
                     )}
                   </td>
                   <td className="no-print">
-                    {!canUpdate && <span className="muted">—</span>}
-                    {canUpdate && (showStart || showComplete) && (
-                      <div className="row">
-                        {showStart && (
-                          <button
-                            type="button"
-                            disabled={blocked || setStatus.isPending}
-                            onClick={() =>
-                              setStatus.mutate({ id: o.id, status: 'in_progress' })
-                            }
-                          >
-                            Start
-                          </button>
-                        )}
-                        {showComplete && (
-                          <button
-                            type="button"
-                            disabled={setStatus.isPending}
-                            onClick={() =>
-                              setStatus.mutate({ id: o.id, status: 'completed' })
-                            }
-                          >
-                            Complete
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {canUpdate && showStart && blocked && (
+                    {!canUpdate && !showResult && <span className="muted">—</span>}
+                    <div className="row">
+                      {canUpdate && showCollect && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={blocked || busy}
+                          onClick={() => collectSample.mutate({ id: o.id })}
+                        >
+                          Collect sample
+                        </button>
+                      )}
+                      {canUpdate && showStart && (
+                        <button
+                          type="button"
+                          disabled={blocked || busy}
+                          onClick={() =>
+                            setStatus.mutate({ id: o.id, status: 'in_progress' })
+                          }
+                        >
+                          Start
+                        </button>
+                      )}
+                      {canUpdate && showComplete && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setStatus.mutate({ id: o.id, status: 'completed' })
+                          }
+                        >
+                          Complete
+                        </button>
+                      )}
+                      {showResult && (
+                        <Link to={`/reports/order/${o.id}`}>Enter result</Link>
+                      )}
+                    </div>
+                    {canUpdate && (showCollect || showStart) && blocked && (
                       <span className="blocked-note">{NOT_RELEASABLE_HINT}</span>
                     )}
                     {rowError?.id === o.id && (

@@ -10,6 +10,8 @@ import { serviceDepartmentSchema } from './services.js';
  */
 export const serviceOrderStatusSchema = z.enum([
   'ordered',
+  /// Specimen taken. Meaningless for imaging, which goes straight to in_progress.
+  'sample_collected',
   'in_progress',
   'completed',
   'cancelled',
@@ -18,6 +20,7 @@ export type ServiceOrderStatus = z.infer<typeof serviceOrderStatusSchema>;
 
 export const SERVICE_ORDER_STATUS_LABELS: Record<ServiceOrderStatus, string> = {
   ordered: 'Ordered',
+  sample_collected: 'Sample collected',
   in_progress: 'In progress',
   completed: 'Completed',
   cancelled: 'Cancelled',

@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  collectSampleSchema,
   type CreateServiceOrdersInput,
   createServiceOrdersSchema,
   type ServiceOrderStatus,
@@ -61,6 +62,22 @@ export class OrdersController {
   @Audit('order.read')
   get(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.orders.get(requireTenant(user), id);
+  }
+
+  @Post(':id/collect-sample')
+  @Permissions('order:update')
+  collectSample(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(collectSampleSchema))
+    dto: { collectedAt?: string },
+  ) {
+    return this.orders.collectSample(
+      requireTenant(user),
+      user.id,
+      id,
+      dto.collectedAt,
+    );
   }
 
   @Patch(':id/status')

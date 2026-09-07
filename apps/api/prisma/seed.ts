@@ -52,6 +52,7 @@ async function main(): Promise<void> {
   await seedClinicalVocabulary(tenantId);
   await seedIcd10();
   await seedVitalTypes(tenantId);
+  await seedDiagnostics(tenantId);
   await seedWardsAndBeds(tenantId);
 
   console.log('\nSeed complete.');
@@ -394,6 +395,113 @@ async function seedVitalTypes(tenantId: string): Promise<void> {
       where: { tenantId, name: t.name },
     });
     if (!found) await prisma.vitalType.create({ data: t });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics — a real definition for each seeded lab/imaging service so a
+// report can actually be filled in. Pathology tests carry parameters with
+// reference ranges; imaging carries none and is reported as narrative findings.
+// Each test is linked to the existing Service of the same name.
+// ---------------------------------------------------------------------------
+
+interface SeedParam {
+  name: string;
+  unit?: string;
+  refLow?: number;
+  refHigh?: number;
+  refText?: string;
+}
+
+interface SeedLabTest {
+  name: string;
+  department: ServiceDepartment;
+  sampleType?: string;
+  parameters: SeedParam[];
+}
+
+async function seedDiagnostics(tenantId: string): Promise<void> {
+  const tests: SeedLabTest[] = [
+    {
+      name: 'CBC',
+      department: 'laboratory',
+      sampleType: 'Blood',
+      parameters: [
+        { name: 'Haemoglobin', unit: 'g/dL', refLow: 13, refHigh: 17 },
+        { name: 'WBC', unit: '10⁹/L', refLow: 4, refHigh: 11 },
+        { name: 'Platelets', unit: '10⁹/L', refLow: 150, refHigh: 400 },
+        { name: 'Haematocrit', unit: '%', refLow: 40, refHigh: 50 },
+      ],
+    },
+    {
+      name: 'Blood Sugar Fasting',
+      department: 'laboratory',
+      sampleType: 'Blood',
+      parameters: [
+        { name: 'Glucose', unit: 'mg/dL', refLow: 70, refHigh: 100 },
+      ],
+    },
+    {
+      name: 'Urine R/E',
+      department: 'laboratory',
+      sampleType: 'Urine',
+      parameters: [
+        { name: 'Colour', refText: 'Straw' },
+        { name: 'Protein', refText: 'Negative' },
+        { name: 'Glucose', refText: 'Negative' },
+        { name: 'Pus cells', unit: '/HPF', refLow: 0, refHigh: 5 },
+      ],
+    },
+    {
+      name: 'LFT',
+      department: 'laboratory',
+      sampleType: 'Blood',
+      parameters: [
+        { name: 'ALT', unit: 'U/L', refLow: 7, refHigh: 56 },
+        { name: 'AST', unit: 'U/L', refLow: 10, refHigh: 40 },
+        { name: 'Bilirubin total', unit: 'mg/dL', refLow: 0.1, refHigh: 1.2 },
+        {
+          name: 'Alkaline phosphatase',
+          unit: 'U/L',
+          refLow: 44,
+          refHigh: 147,
+        },
+      ],
+    },
+    { name: 'Chest X-Ray', department: 'radiology', parameters: [] },
+    { name: 'Ultrasound Abdomen', department: 'radiology', parameters: [] },
+  ];
+
+  for (const t of tests) {
+    const existing = await prisma.labTest.findFirst({
+      where: { tenantId, name: t.name },
+    });
+    if (existing) continue;
+
+    const service = await prisma.service.findFirst({
+      where: { tenantId, name: t.name },
+    });
+
+    await prisma.labTest.create({
+      data: {
+        tenantId,
+        name: t.name,
+        department: t.department,
+        sampleType: t.sampleType ?? null,
+        serviceId: service?.id ?? null,
+        parameters: {
+          create: t.parameters.map((p, i) => ({
+            tenantId,
+            name: p.name,
+            unit: p.unit ?? null,
+            refLow: p.refLow ?? null,
+            refHigh: p.refHigh ?? null,
+            refText: p.refText ?? null,
+            sortOrder: i,
+          })),
+        },
+      },
+    });
   }
 }
 

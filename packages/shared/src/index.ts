@@ -10,6 +10,8 @@ export * from './services.js';
 export * from './opd.js';
 export * from './billing.js';
 export * from './orders.js';
+export * from './diagnostics.js';
+export * from './pharmacy.js';
 export * from './prescription.js';
 export * from './ward.js';
 export * from './admission.js';

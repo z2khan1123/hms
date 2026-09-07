@@ -21,6 +21,7 @@ import {
   updateOpdVisitSchema,
   type BillItem,
   type CaseLedger,
+  type DiagnosticReport,
   type OpdVisit,
   type OpdVisitStatus,
   type Patient,
@@ -519,7 +520,13 @@ export function OpdVisitPage() {
 
       <PrescriptionPanel visitId={v.id} canWrite={canPrescribe} />
 
-      <OrdersPanel visitId={v.id} canOrder={canOrder} canRead={can('order:read')} />
+      <OrdersPanel
+        visitId={v.id}
+        caseId={v.caseId}
+        canOrder={canOrder}
+        canRead={can('order:read')}
+        canReadReports={can('report:read')}
+      />
 
       <VitalsPanel
         patientId={v.patient.id}
@@ -1048,12 +1055,16 @@ interface BasketItem {
 
 function OrdersPanel({
   visitId,
+  caseId,
   canOrder,
   canRead,
+  canReadReports,
 }: {
   visitId: string;
+  caseId: string;
   canOrder: boolean;
   canRead: boolean;
+  canReadReports: boolean;
 }) {
   const queryClient = useQueryClient();
   const [basket, setBasket] = useState<BasketItem[]>([]);
@@ -1070,6 +1081,22 @@ function OrdersPanel({
     },
     enabled: Boolean(visitId) && canRead,
   });
+
+  const reports = useQuery({
+    // DiagnosticReport[] for the case, keyed by its own shape.
+    queryKey: ['reports', 'byCase', caseId],
+    queryFn: async () => {
+      const { data } = await api.get<DiagnosticReport[]>('/reports', {
+        params: { caseId },
+      });
+      return data;
+    },
+    enabled: Boolean(caseId) && canReadReports,
+  });
+
+  const reportByOrder = new Map(
+    (reports.data ?? []).map((r) => [r.serviceOrderId, r]),
+  );
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -1245,31 +1272,46 @@ function OrdersPanel({
                   <th>Ordered</th>
                   <th>Status</th>
                   <th>Payment</th>
+                  {canReadReports && <th>Report</th>}
                 </tr>
               </thead>
               <tbody>
-                {orders.data.map((o) => (
-                  <tr key={o.id}>
-                    <td>
-                      {o.serviceName}
-                      {o.note ? <div className="muted">{o.note}</div> : null}
-                    </td>
-                    <td>{formatDateTime(o.orderedAt)}</td>
-                    <td>
-                      <StatusBadge
-                        status={o.status}
-                        label={SERVICE_ORDER_STATUS_LABELS[o.status]}
-                      />
-                    </td>
-                    <td>
-                      {o.billStatus === 'pending' && !o.approvedWithoutPayment ? (
-                        <span className="badge badge-ordered">Payment pending</span>
-                      ) : (
-                        <span className="muted">{paymentStateLabel(o)}</span>
+                {orders.data.map((o) => {
+                  const report = reportByOrder.get(o.id);
+                  return (
+                    <tr key={o.id}>
+                      <td>
+                        {o.serviceName}
+                        {o.note ? <div className="muted">{o.note}</div> : null}
+                      </td>
+                      <td>{formatDateTime(o.orderedAt)}</td>
+                      <td>
+                        <StatusBadge
+                          status={o.status}
+                          label={SERVICE_ORDER_STATUS_LABELS[o.status]}
+                        />
+                      </td>
+                      <td>
+                        {o.billStatus === 'pending' && !o.approvedWithoutPayment ? (
+                          <span className="badge badge-ordered">Payment pending</span>
+                        ) : (
+                          <span className="muted">{paymentStateLabel(o)}</span>
+                        )}
+                      </td>
+                      {canReadReports && (
+                        <td>
+                          {report && report.isFinal ? (
+                            <Link to={`/reports/${report.id}`}>View report</Link>
+                          ) : report ? (
+                            <span className="badge badge-draft">Result in progress</span>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

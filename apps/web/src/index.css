@@ -355,3 +355,39 @@ tr.is-reversed td { color: var(--muted); text-decoration: line-through; }
 .modal-body p { margin: 8px 0; }
 .modal-body ul { margin: 4px 0 8px 18px; padding: 0; }
 .modal-subhead { font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+
+/* ---------------------------------------------------------------- diagnostics */
+
+/* new service-order work state */
+.badge-sample_collected { background: var(--info-bg); color: var(--primary); }
+
+/* report status */
+.badge-draft { background: var(--warn-bg); color: var(--warn); }
+.badge-final { background: var(--ok-bg); color: var(--ok); }
+
+/*
+ * Result flags never lean on colour alone: an arrow glyph and a word carry the
+ * same meaning, so a low/high result is still obvious in black and white and on
+ * a monochrome printout.
+ */
+.diag-flag { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.diag-flag::before { margin-right: 3px; }
+.diag-flag-low::before { content: "\25BC"; }   /* down triangle */
+.diag-flag-high::before { content: "\25B2"; }  /* up triangle */
+.diag-flag-low, .diag-flag-high { color: var(--danger); }
+.diag-flag-normal { color: var(--muted); font-weight: 400; }
+.diag-flag-normal::before { content: "\2013"; } /* en dash */
+
+tr.diag-abnormal > td { font-weight: 700; }
+.diag-ref { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.diag-note { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+.report-doc h1 { font-size: 20px; margin: 0; }
+.report-doc .report-hospital { font-size: 22px; font-weight: 700; }
+.report-doc .report-abn-key { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+@media print {
+  .diag-flag-low, .diag-flag-high { color: #000; }
+  tr.diag-abnormal > td { font-weight: 700; }
+  .report-doc { font-size: 12px; }
+}

@@ -15,6 +15,10 @@ import { DoctorQueuePage } from './pages/DoctorQueuePage';
 import { CaseBillingPage } from './pages/CaseBillingPage';
 import { CashierPage } from './pages/CashierPage';
 import { DepartmentWorklistPage } from './pages/DepartmentWorklistPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { ReportEntryPage } from './pages/ReportEntryPage';
+import { ReportViewPage } from './pages/ReportViewPage';
+import { LabTestsPage } from './pages/LabTestsPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { BedBoardPage } from './pages/BedBoardPage';
 import { AdmissionsPage } from './pages/AdmissionsPage';
@@ -50,8 +54,12 @@ export default function App() {
         <Route path="admissions/:id" element={<AdmissionPage />} />
         <Route path="billing/pending" element={<CashierPage />} />
         <Route path="worklist" element={<DepartmentWorklistPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
+        <Route path="reports/:id" element={<ReportViewPage />} />
         <Route path="cases/:id/billing" element={<CaseBillingPage />} />
         <Route path="setup/services" element={<ServicesPage />} />
+        <Route path="setup/lab-tests" element={<LabTestsPage />} />
         <Route path="setup/wards" element={<WardSetupPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -20,6 +20,7 @@ export function Layout() {
           {can('admission:read') && <NavLink to="/admissions">Admissions</NavLink>}
           {can('payment:create') && <NavLink to="/billing/pending">Billing</NavLink>}
           {can('order:update') && <NavLink to="/worklist">Worklist</NavLink>}
+          {can('report:read') && <NavLink to="/reports">Reports</NavLink>}
           <details className="nav-menu">
             <summary>Setup</summary>
             <div
@@ -29,6 +30,7 @@ export function Layout() {
               }
             >
               <NavLink to="/setup/services">Services</NavLink>
+              {can('labtest:read') && <NavLink to="/setup/lab-tests">Lab tests</NavLink>}
               {can('ward:read') && <NavLink to="/setup/wards">Wards &amp; beds</NavLink>}
             </div>
           </details>

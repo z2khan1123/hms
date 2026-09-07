@@ -20,7 +20,9 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
 import { CasesModule } from './modules/cases/cases.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
+import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { LabTestsModule } from './modules/lab-tests/lab-tests.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { WardsModule } from './modules/wards/wards.module.js';
@@ -65,6 +67,8 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     BillingModule,
     OpdModule,
     OrdersModule,
+    LabTestsModule,
+    DiagnosticsModule,
     PrescriptionsModule,
     VitalsModule,
     WardsModule,
