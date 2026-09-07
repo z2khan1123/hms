@@ -270,6 +270,9 @@ export function CaseBillingPage() {
                         <td>
                           {it.serviceName}
                           {it.note ? <div className="muted">{it.note}</div> : null}
+                          {it.discountReason ? (
+                            <div className="muted">Concession: {it.discountReason}</div>
+                          ) : null}
                         </td>
                         <td className="num">{it.quantity}</td>
                         <td className="num">{formatMoney(it.priceMinor, cur)}</td>

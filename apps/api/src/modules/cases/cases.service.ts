@@ -11,7 +11,6 @@ import type {
   OpenCaseInput,
 } from '@hms/shared';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
-import { parseIsoDateOrNull } from '../../common/util/dates.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { caseDetailInclude, toCaseDto } from './cases.mapper.js';
 
@@ -41,11 +40,6 @@ export class CasesService {
     return this.get(tenantId, created.id);
   }
 
-  /**
-   * Opening a case snapshots the payer: an explicit `tpaId` wins, otherwise the
-   * patient's current membership is copied onto the case so later changes to the
-   * patient record never rewrite an episode's terms.
-   */
   async openInTx(
     tx: Prisma.TransactionClient,
     tenantId: string,
@@ -54,30 +48,9 @@ export class CasesService {
   ): Promise<Case> {
     const patient = await tx.patient.findFirst({
       where: { id: input.patientId, tenantId, deletedAt: null },
-      select: {
-        id: true,
-        tpaId: true,
-        tpaMemberId: true,
-        tpaValidTill: true,
-      },
+      select: { id: true },
     });
     if (!patient) throw new BadRequestException('Unknown patient');
-
-    let tpaId = input.tpaId ?? null;
-    let tpaMemberId = input.tpaMemberId ?? null;
-    let tpaValidTill = parseIsoDateOrNull(input.tpaValidTill);
-
-    if (input.tpaId) {
-      const tpa = await tx.tpa.findFirst({
-        where: { id: input.tpaId, tenantId },
-        select: { id: true },
-      });
-      if (!tpa) throw new BadRequestException('Unknown TPA');
-    } else {
-      tpaId = patient.tpaId;
-      tpaMemberId = input.tpaMemberId ?? patient.tpaMemberId;
-      tpaValidTill = tpaValidTill ?? patient.tpaValidTill;
-    }
 
     const caseNo = await this.sequence.next(tx, tenantId, 'case');
 
@@ -88,9 +61,6 @@ export class CasesService {
         caseNo,
         isCasualty: input.isCasualty ?? false,
         reference: input.reference ?? null,
-        tpaId,
-        tpaMemberId,
-        tpaValidTill,
         createdById,
       },
     });

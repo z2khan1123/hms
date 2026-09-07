@@ -159,3 +159,33 @@ export const pendingChargeGroupSchema = z.object({
   oldestPendingAt: isoDateTimeSchema,
 });
 export type PendingChargeGroup = z.infer<typeof pendingChargeGroupSchema>;
+
+/**
+ * Reduce a charge that has not been paid yet — in practice a doctor obliging a
+ * patient on his own consultation fee, from his own screen rather than asking
+ * the front desk to do it for him.
+ *
+ * The reason is REQUIRED. A concession without one is indistinguishable from
+ * revenue quietly going missing, and the person who granted it is recorded.
+ * Only a `pending` line can be adjusted; once money has changed hands the
+ * correction is a refund, which is a different transaction.
+ *
+ * This REPLACES the pricing on the line, it does not merge into it. Omitting a
+ * discount means the adjusted line carries no discount, even if it had one
+ * before. Stated explicitly because both the API and the client recompute the
+ * total independently, and a silent merge on one side only would show the
+ * doctor one figure and charge the patient another.
+ */
+export const adjustBillItemSchema = z
+  .object({
+    priceMinor: z.number().int().min(0).optional(),
+    quantity: z.number().int().min(1).max(999).optional(),
+    discountBps: z.number().int().min(0).max(10_000).optional(),
+    discountMinor: z.number().int().min(0).optional(),
+    discountReason: z.string().trim().min(3).max(500),
+  })
+  .refine((v) => !(v.discountBps !== undefined && v.discountMinor !== undefined), {
+    message: 'Give a percentage discount or a flat discount, not both',
+    path: ['discountMinor'],
+  });
+export type AdjustBillItemInput = z.infer<typeof adjustBillItemSchema>;

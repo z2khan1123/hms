@@ -4,12 +4,13 @@ import type {
   Patient as PatientDto,
   PatientSummary,
 } from '@hms/shared';
-import { toIsoDate, toIsoDateOrNull } from '../../common/util/dates.js';
+import { toIsoDate } from '../../common/util/dates.js';
 
-/** Everything `patientSchema` needs beyond the patient's own columns. */
-export const patientDetailInclude = {
-  tpa: { select: { id: true, name: true, code: true } },
-} as const;
+/**
+ * Everything `patientSchema` needs beyond the patient's own columns. Nothing at
+ * present — kept so the mapper's row type stays a single named shape.
+ */
+export const patientDetailInclude = {} as const;
 
 export type PatientDetailRow = Prisma.PatientGetPayload<{
   include: typeof patientDetailInclude;
@@ -37,10 +38,6 @@ export function toPatientDto(p: PatientDetailRow): PatientDto {
     photoUrl: p.photoUrl,
     knownAllergies: p.knownAllergies,
     remarks: p.remarks,
-
-    tpa: p.tpa ? { id: p.tpa.id, name: p.tpa.name, code: p.tpa.code } : null,
-    tpaMemberId: p.tpaMemberId,
-    tpaValidTill: toIsoDateOrNull(p.tpaValidTill),
 
     status: p.status,
     createdAt: p.createdAt.toISOString(),

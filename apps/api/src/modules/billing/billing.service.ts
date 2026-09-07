@@ -7,6 +7,7 @@ import {
 import { Prisma, type BillItem, type Payment , type CaseStatus } from '@prisma/client';
 import {
   type AddBillItemInput,
+  type AdjustBillItemInput,
   type BillItem as BillItemDto,
   type CaseLedger,
   computeBillLine,
@@ -139,6 +140,62 @@ export class BillingService {
    * rejecting only a closed one.
    */
 
+
+  /**
+   * Concede part of a charge that has not been paid yet — in practice a doctor
+   * obliging a patient on his own consultation fee. The line is recomputed with
+   * `computeBillLine` from the supplied `priceMinor` (falling back to the one
+   * already on the line), `quantity` and whichever discount was given; the
+   * arithmetic is never hand-rolled.
+   *
+   * Only a `pending` line may be adjusted. Once the charge is `paid`, `cancelled`
+   * or `refunded` the money has changed hands and the correction is a refund —
+   * a separate transaction — not an in-place edit.
+   *
+   * `discountReason` is required by the schema, so a concession is never
+   * anonymous. `BillItem` has no `updatedById` column, so the acting user is not
+   * written onto the row; the `@Audit` interceptor already records the actor,
+   * action and entity id for this mutation, which is the audit trail for who
+   * granted the concession.
+   */
+  async adjustBillItem(
+    tenantId: string,
+    _actingUserId: string,
+    id: string,
+    input: AdjustBillItemInput,
+  ): Promise<BillItemDto> {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const item = await tx.billItem.findFirst({ where: { id, tenantId } });
+      if (!item) throw new NotFoundException('Bill item not found');
+      if (item.status !== 'pending') {
+        throw new ConflictException(
+          'This charge has already been settled; it cannot be edited in place — ' +
+            'issue a refund instead',
+        );
+      }
+
+      const priceMinor = input.priceMinor ?? item.priceMinor;
+      const totals = computeBillLine({
+        priceMinor,
+        quantity: input.quantity ?? item.quantity,
+        discountBps: input.discountBps,
+        discountMinor: input.discountMinor,
+      });
+
+      return tx.billItem.update({
+        where: { id },
+        data: {
+          priceMinor,
+          quantity: totals.quantity,
+          discountBps: totals.discountBps,
+          discountMinor: totals.discountMinor,
+          netMinor: totals.netMinor,
+          discountReason: input.discountReason,
+        },
+      });
+    });
+    return toBillItemDto(updated);
+  }
 
   /** Allowed only while the case is open — a closed episode's bill is final. */
   async removeBillItem(tenantId: string, id: string): Promise<void> {

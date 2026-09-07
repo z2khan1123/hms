@@ -5,7 +5,6 @@ export * from './auth.js';
 export * from './patient.js';
 export * from './practitioner.js';
 export * from './appointment.js';
-export * from './tpa.js';
 export * from './case.js';
 export * from './services.js';
 export * from './opd.js';

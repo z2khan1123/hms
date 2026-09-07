@@ -62,6 +62,16 @@ export class PatientsController {
     return this.patients.get(requireTenant(user), id);
   }
 
+  @Get(':id/history-alert')
+  @Permissions('patient:read')
+  @Audit('patient.history')
+  historyAlert(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.patients.historyAlert(requireTenant(user), id);
+  }
+
   @Patch(':id')
   @Permissions('patient:update')
   update(

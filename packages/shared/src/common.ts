@@ -44,8 +44,6 @@ export const addressSchema = z.object({
   line1: z.string().trim().min(1).max(200),
   line2: z.string().trim().max(200).optional(),
   city: z.string().trim().min(1).max(100),
-  province: z.string().trim().max(100).optional(),
-  postalCode: z.string().trim().max(20).optional(),
   country: z.string().trim().length(2).default('PK'),
 });
 export type Address = z.infer<typeof addressSchema>;

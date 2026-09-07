@@ -1,30 +1,43 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  BILL_ITEM_STATUS_LABELS,
   FREQUENCY_SUGGESTIONS,
   OPD_STATUS_LABELS,
   SERVICE_ORDER_STATUS_LABELS,
   VISIT_STAGE_LABELS,
+  adjustBillItemSchema,
+  computeBillLine,
   createServiceOrdersSchema,
   flagFor,
+  formatBps,
   formatMoney,
+  percentToBps,
   recordVitalsSchema,
   setPrescriptionSchema,
+  toMajor,
+  toMinor,
   updateOpdVisitSchema,
+  type BillItem,
+  type CaseLedger,
   type OpdVisit,
   type OpdVisitStatus,
+  type Patient,
+  type PatientHistoryAlert,
   type PrescriptionItem,
   type Practitioner,
   type Service,
   type ServiceOrder,
   type UpdateOpdVisitInput,
+  type UpdatePatientInput,
   type VitalReading,
   type VitalType,
 } from '@hms/shared';
 import { api } from '../lib/api';
 import { useCan } from '../lib/permissions';
-import { blankToUndefined, formatDateTime, fullName } from '../lib/format';
+import { num } from '../lib/bill-line';
+import { blankToUndefined, formatDate, formatDateTime, fullName } from '../lib/format';
 import { DiagnosisEditor, type DiagnosisDraft } from '../components/DiagnosisEditor';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
 import { PatientHeader } from '../components/PatientHeader';
@@ -62,6 +75,38 @@ export function OpdVisitPage() {
     queryFn: async () => {
       const { data } = await api.get<Practitioner[]>('/practitioners');
       return data;
+    },
+  });
+
+  // --- history alert -------------------------------------------------------
+  // Put a returning patient's allergy and history in front of the doctor once,
+  // before he starts, rather than hoping he opens the right tab.
+  const patientId = visit.data?.patient.id ?? '';
+
+  const historyAlert = useQuery({
+    queryKey: ['patient', 'history-alert', patientId],
+    queryFn: async () => {
+      const { data } = await api.get<PatientHistoryAlert>(
+        `/patients/${patientId}/history-alert`,
+      );
+      return data;
+    },
+    enabled: Boolean(patientId),
+  });
+
+  const [historyAlertDismissed, setHistoryAlertDismissed] = useState(false);
+
+  const saveAllergyToRecord = useMutation({
+    mutationFn: async (value: string) => {
+      const payload: UpdatePatientInput = { knownAllergies: value };
+      const { data } = await api.patch<Patient>(`/patients/${patientId}`, payload);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['patient', 'history-alert', patientId],
+      });
+      await queryClient.invalidateQueries({ queryKey: ['opd', 'visit', id] });
     },
   });
 
@@ -183,9 +228,18 @@ export function OpdVisitPage() {
   const canPrescribe = can('prescription:write') && canEdit;
   const canOrder = can('order:create') && v.status !== 'cancelled' && v.status !== 'completed';
   const allergyText = v.knownAllergies?.trim() || v.patient.knownAllergies?.trim() || '';
+  const canUpdatePatient = can('patient:update');
+  const history = historyAlert.data;
 
   return (
     <>
+      {history?.hasHistory && !historyAlertDismissed && (
+        <HistoryAlertModal
+          alert={history}
+          onDismiss={() => setHistoryAlertDismissed(true)}
+        />
+      )}
+
       <div className="page-head">
         <h1>OPD visit {v.opdNo}</h1>
         <Link to="/opd">Back to OPD list</Link>
@@ -394,6 +448,40 @@ export function OpdVisitPage() {
                   disabled={!canEdit}
                   onChange={(e) => setKnownAllergies(e.target.value)}
                 />
+                <span className="hint">
+                  Saved to this visit when you save the consultation.
+                </span>
+                {canEdit && canUpdatePatient && (
+                  <>
+                    <div className="row no-print" style={{ marginTop: 6 }}>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={
+                          !knownAllergies.trim() || saveAllergyToRecord.isPending
+                        }
+                        onClick={() =>
+                          saveAllergyToRecord.mutate(knownAllergies.trim())
+                        }
+                      >
+                        {saveAllergyToRecord.isPending
+                          ? 'Saving…'
+                          : "Also save to the patient's permanent record"}
+                      </button>
+                      {saveAllergyToRecord.isSuccess && (
+                        <span className="muted">Saved to the record.</span>
+                      )}
+                    </div>
+                    <span className="hint">
+                      Writes the allergy to the patient's file — this is what makes the
+                      warning pop up for the next doctor who sees them.
+                    </span>
+                    <ErrorNote
+                      error={saveAllergyToRecord.error}
+                      fallback="Could not update the patient record"
+                    />
+                  </>
+                )}
               </div>
               <div className="field">
                 <label htmlFor="previousMedicalIssue">Previous medical issue</label>
@@ -427,6 +515,8 @@ export function OpdVisitPage() {
         </div>
       </form>
 
+      <ChargesPanel visitId={v.id} caseId={v.caseId} />
+
       <PrescriptionPanel visitId={v.id} canWrite={canPrescribe} />
 
       <OrdersPanel visitId={v.id} canOrder={canOrder} canRead={can('order:read')} />
@@ -438,6 +528,290 @@ export function OpdVisitPage() {
         canRecord={can('vital:create') && v.status !== 'cancelled'}
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Charges for this visit — a doctor may concede his own fee here
+// ---------------------------------------------------------------------------
+
+function ChargesPanel({ visitId, caseId }: { visitId: string; caseId: string }) {
+  const can = useCan();
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const ledger = useQuery({
+    // Same shape and key family as the case billing page — one cache entry.
+    queryKey: ['case', 'ledger', caseId],
+    queryFn: async () => {
+      const { data } = await api.get<CaseLedger>(`/billing/cases/${caseId}/ledger`);
+      return data;
+    },
+    enabled: Boolean(caseId),
+  });
+
+  const currency = ledger.data?.currency || 'PKR';
+  const lines = (ledger.data?.items ?? []).filter((it) => it.opdVisitId === visitId);
+  const canDiscount = can('bill:discount');
+
+  const afterSave = async () => {
+    setEditingId(null);
+    await queryClient.invalidateQueries({ queryKey: ['case', 'ledger', caseId] });
+    await queryClient.invalidateQueries({ queryKey: ['opd', 'visit', visitId] });
+  };
+
+  return (
+    <div className="card">
+      <div className="section">
+        <h2>Charges for this visit</h2>
+        <ErrorNote error={ledger.error} fallback="Could not load the charges" />
+        {ledger.isPending && <Loading label="Loading charges…" />}
+        {ledger.data && lines.length === 0 && (
+          <p className="muted">No charges recorded for this visit.</p>
+        )}
+        {lines.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Price</th>
+                  <th className="num">Discount</th>
+                  <th className="num">Net</th>
+                  <th>Payment</th>
+                  <th className="no-print" />
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((it) => (
+                  <ChargeRow
+                    key={it.id}
+                    item={it}
+                    currency={currency}
+                    canDiscount={canDiscount}
+                    editing={editingId === it.id}
+                    onEdit={() => setEditingId(it.id)}
+                    onCancel={() => setEditingId(null)}
+                    onSaved={afterSave}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChargeRow({
+  item,
+  currency,
+  canDiscount,
+  editing,
+  onEdit,
+  onCancel,
+  onSaved,
+}: {
+  item: BillItem;
+  currency: string;
+  canDiscount: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  return (
+    <>
+      <tr>
+        <td>
+          {item.serviceName}
+          {item.note ? <div className="muted">{item.note}</div> : null}
+          {item.discountReason ? (
+            <div className="muted">Concession: {item.discountReason}</div>
+          ) : null}
+        </td>
+        <td className="num">{item.quantity}</td>
+        <td className="num">{formatMoney(item.priceMinor, currency)}</td>
+        <td className="num">
+          {item.discountMinor > 0 ? `-${formatMoney(item.discountMinor, currency)}` : '—'}
+          {item.discountBps > 0 ? (
+            <div className="muted">{formatBps(item.discountBps)}</div>
+          ) : null}
+        </td>
+        <td className="num">{formatMoney(item.netMinor, currency)}</td>
+        <td>
+          <StatusBadge
+            status={item.status}
+            label={BILL_ITEM_STATUS_LABELS[item.status]}
+          />
+        </td>
+        <td className="no-print">
+          {item.status === 'pending' && canDiscount && !editing && (
+            <button type="button" className="secondary" onClick={onEdit}>
+              Reduce fee
+            </button>
+          )}
+        </td>
+      </tr>
+
+      {item.status === 'paid' && (
+        <tr>
+          <td colSpan={7} className="muted">
+            Already paid — a change now needs a refund at the counter.
+          </td>
+        </tr>
+      )}
+
+      {editing && (
+        <tr>
+          <td colSpan={7}>
+            <ReduceFeeForm
+              item={item}
+              currency={currency}
+              onCancel={onCancel}
+              onSaved={onSaved}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function ReduceFeeForm({
+  item,
+  currency,
+  onCancel,
+  onSaved,
+}: {
+  item: BillItem;
+  currency: string;
+  onCancel: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [mode, setMode] = useState<'price' | 'percent'>('price');
+  const [priceMajor, setPriceMajor] = useState(String(toMajor(item.priceMinor)));
+  const [percent, setPercent] = useState('');
+  const [reason, setReason] = useState('');
+  const [issue, setIssue] = useState<string | null>(null);
+
+  const nextPriceMinor =
+    mode === 'price' ? Math.max(0, toMinor(num(priceMajor))) : item.priceMinor;
+  const nextDiscountBps =
+    mode === 'percent'
+      ? Math.min(10_000, Math.max(0, percentToBps(num(percent))))
+      : 0;
+
+  const preview = computeBillLine({
+    priceMinor: nextPriceMinor,
+    quantity: item.quantity,
+    ...(mode === 'percent' ? { discountBps: nextDiscountBps } : {}),
+  });
+
+  const reasonOk = reason.trim().length >= 3;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        ...(mode === 'price'
+          ? { priceMinor: nextPriceMinor }
+          : { discountBps: nextDiscountBps }),
+        discountReason: reason.trim(),
+      };
+      const parsed = adjustBillItemSchema.safeParse(payload);
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? 'Check the fields.');
+      }
+      const { data } = await api.patch<BillItem>(
+        `/billing/bill-items/${item.id}`,
+        parsed.data,
+      );
+      return data;
+    },
+    onSuccess: async () => {
+      setIssue(null);
+      await onSaved();
+    },
+    onError: (err) =>
+      setIssue(err instanceof Error ? err.message : 'Could not reduce the fee'),
+  });
+
+  return (
+    <div className="section" style={{ marginTop: 0 }}>
+      <h2>Reduce fee</h2>
+      {issue && (
+        <div className="alert" role="alert">
+          {issue}
+        </div>
+      )}
+      <ErrorNote error={save.error} fallback="Could not reduce the fee" />
+      <div className="form-grid-3">
+        <div className="field">
+          <label htmlFor={`reduce-mode-${item.id}`}>How</label>
+          <select
+            id={`reduce-mode-${item.id}`}
+            value={mode}
+            onChange={(e) => setMode(e.target.value as 'price' | 'percent')}
+          >
+            <option value="price">Set a new price</option>
+            <option value="percent">Apply a percentage discount</option>
+          </select>
+        </div>
+        {mode === 'price' ? (
+          <div className="field">
+            <label htmlFor={`reduce-price-${item.id}`}>New price ({currency})</label>
+            <input
+              id={`reduce-price-${item.id}`}
+              type="number"
+              min="0"
+              step="0.01"
+              value={priceMajor}
+              onChange={(e) => setPriceMajor(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="field">
+            <label htmlFor={`reduce-pct-${item.id}`}>Discount %</label>
+            <input
+              id={`reduce-pct-${item.id}`}
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={percent}
+              onChange={(e) => setPercent(e.target.value)}
+            />
+          </div>
+        )}
+        <div className="field">
+          <label htmlFor={`reduce-reason-${item.id}`}>Reason</label>
+          <input
+            id={`reduce-reason-${item.id}`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. staff family, hardship waiver"
+          />
+          <span className="hint">Required — at least 3 characters.</span>
+        </div>
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          disabled={!reasonOk || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Saving…' : 'Apply concession'}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <span className="muted">
+          Patient will pay {formatMoney(preview.netMinor, currency)}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -1086,6 +1460,110 @@ function VitalsPanel({
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Returning-patient history alert
+// ---------------------------------------------------------------------------
+
+function HistoryAlertModal({
+  alert,
+  onDismiss,
+}: {
+  alert: PatientHistoryAlert;
+  onDismiss: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onDismiss();
+    };
+    document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onDismiss]);
+
+  const allergy = alert.knownAllergies?.trim();
+  const hasVisits = alert.previousVisitCount > 0;
+  const hasDiagnoses = alert.recentDiagnoses.length > 0;
+  const hasAdmissions = alert.previousAdmissionCount > 0;
+
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onDismiss();
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-alert-title"
+        tabIndex={-1}
+        ref={dialogRef}
+      >
+        <h2 id="history-alert-title">This patient has been seen here before</h2>
+
+        {allergy && (
+          <div className="modal-allergy" role="alert">
+            <span className="modal-allergy-tag">Allergy</span>
+            <span>{allergy}</span>
+            {alert.allergiesUpdatedAt && (
+              <span className="modal-allergy-age">
+                on record since {formatDate(alert.allergiesUpdatedAt)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {(hasVisits || hasDiagnoses || hasAdmissions) && (
+          <div className="modal-body">
+            {hasVisits && (
+              <p>
+                <strong>{alert.previousVisitCount}</strong> previous visit
+                {alert.previousVisitCount === 1 ? '' : 's'}
+                {alert.lastVisitAt && <> · last on {formatDateTime(alert.lastVisitAt)}</>}
+                {alert.lastVisitPractitioner && <> with {alert.lastVisitPractitioner}</>}
+              </p>
+            )}
+
+            {hasDiagnoses && (
+              <div>
+                <p className="modal-subhead">Recent diagnoses</p>
+                <ul>
+                  {alert.recentDiagnoses.map((d) => (
+                    <li key={`${d.code}-${d.recordedAt}`}>
+                      <strong>{d.code}</strong> {d.title} · {formatDate(d.recordedAt)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {hasAdmissions && (
+              <p>
+                <strong>{alert.previousAdmissionCount}</strong> previous admission
+                {alert.previousAdmissionCount === 1 ? '' : 's'}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="row" style={{ marginTop: 16 }}>
+          <button type="button" onClick={onDismiss}>
+            Dismiss
+          </button>
+        </div>
       </div>
     </div>
   );

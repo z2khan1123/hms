@@ -6,7 +6,7 @@ import { PatientForm } from '../components/PatientForm';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
 
 /** Patient record -> form defaults. The CNIC is write-only, so it starts blank. */
-function toFormValues(p: Patient): Partial<CreatePatientInput> {
+function toFormValues(p: Patient): Partial<UpdatePatientInput> {
   return {
     firstName: p.firstName,
     lastName: p.lastName,
@@ -22,9 +22,6 @@ function toFormValues(p: Patient): Partial<CreatePatientInput> {
     photoUrl: p.photoUrl ?? undefined,
     knownAllergies: p.knownAllergies ?? undefined,
     remarks: p.remarks ?? undefined,
-    tpaId: p.tpa?.id,
-    tpaMemberId: p.tpaMemberId ?? undefined,
-    tpaValidTill: p.tpaValidTill ?? undefined,
   };
 }
 

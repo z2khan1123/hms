@@ -131,8 +131,6 @@ export function PatientProfilePage() {
                         p.address.line1,
                         p.address.line2,
                         p.address.city,
-                        p.address.province,
-                        p.address.postalCode,
                         p.address.country,
                       ]
                         .filter(Boolean)
@@ -155,25 +153,6 @@ export function PatientProfilePage() {
           </div>
 
           <div className="card">
-            <div className="section">
-              <h2>Payer / TPA</h2>
-              {p.tpa ? (
-                <dl className="kv" style={{ gridTemplateColumns: '120px 1fr' }}>
-                  <dt>TPA</dt>
-                  <dd>
-                    {p.tpa.name}
-                    {p.tpa.code ? ` (${p.tpa.code})` : ''}
-                  </dd>
-                  <dt>Member ID</dt>
-                  <dd>{p.tpaMemberId ?? '—'}</dd>
-                  <dt>Valid till</dt>
-                  <dd>{p.tpaValidTill ? formatDate(p.tpaValidTill) : '—'}</dd>
-                </dl>
-              ) : (
-                <p className="muted">Self-paying — no panel on file.</p>
-              )}
-            </div>
-
             <div className="section">
               <h2>Known allergies</h2>
               <p className={p.knownAllergies ? undefined : 'muted'}>

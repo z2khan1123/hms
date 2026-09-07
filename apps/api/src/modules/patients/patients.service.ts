@@ -1,19 +1,19 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { OpdVisitStatus, Prisma } from '@prisma/client';
 import {
   type CreatePatientInput,
   type Paginated,
   type Patient as PatientDto,
+  type PatientHistoryAlert,
   type UpdatePatientInput,
 } from '@hms/shared';
 import { createHash } from 'node:crypto';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
-import { parseIsoDate, parseIsoDateOrNull } from '../../common/util/dates.js';
+import {
+  parseIsoDate,
+  toIsoDateTimeOrNull,
+} from '../../common/util/dates.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   patientDetailInclude,
@@ -39,7 +39,6 @@ export class PatientsService {
     input: CreatePatientInput,
   ): Promise<PatientDto> {
     const nid = input.nationalId ? this.hashNationalId(input.nationalId) : null;
-    if (input.tpaId) await this.assertTpa(tenantId, input.tpaId);
 
     const patient = await this.prisma.$transaction(async (tx) => {
       const mrn = await this.sequence.next(tx, tenantId, 'mrn');
@@ -63,12 +62,10 @@ export class PatientsService {
           nationalIdLast4: nid?.last4 ?? null,
 
           photoUrl: input.photoUrl ?? null,
-          knownAllergies: input.knownAllergies ?? null,
           remarks: input.remarks ?? null,
 
-          tpaId: input.tpaId ?? null,
-          tpaMemberId: input.tpaMemberId ?? null,
-          tpaValidTill: parseIsoDateOrNull(input.tpaValidTill),
+          // knownAllergies is not accepted at registration (a front desk cannot
+          // know clinical facts) — left null here and filled in later via update().
 
           ...(input.address
             ? { address: input.address as Prisma.InputJsonValue }
@@ -131,6 +128,83 @@ export class PatientsService {
     return toPatientDto(patient);
   }
 
+  /**
+   * The banner a doctor is shown when a returning patient reaches him: the
+   * running allergy note plus a summary of prior OPD visits, diagnoses and
+   * admissions. `hasHistory` is false for a genuinely new patient so the client
+   * can render nothing.
+   */
+  async historyAlert(
+    tenantId: string,
+    id: string,
+  ): Promise<PatientHistoryAlert> {
+    // A visit is "history" once it is finished — completed or cancelled — as
+    // opposed to the one the patient is here for now.
+    const historyStatuses: OpdVisitStatus[] = [
+      OpdVisitStatus.completed,
+      OpdVisitStatus.cancelled,
+    ];
+    const visitWhere: Prisma.OpdVisitWhereInput = {
+      tenantId,
+      patientId: id,
+      status: { in: historyStatuses },
+    };
+
+    const [patient, previousVisitCount, lastVisit, diagnoses, previousAdmissionCount] =
+      await this.prisma.$transaction([
+        this.prisma.patient.findFirst({
+          where: { id, tenantId, deletedAt: null },
+          select: { knownAllergies: true, updatedAt: true },
+        }),
+        this.prisma.opdVisit.count({ where: visitWhere }),
+        this.prisma.opdVisit.findFirst({
+          where: visitWhere,
+          orderBy: { visitAt: 'desc' },
+          select: {
+            visitAt: true,
+            practitioner: { select: { firstName: true, lastName: true } },
+          },
+        }),
+        this.prisma.visitDiagnosis.findMany({
+          where: { tenantId, opdVisit: { patientId: id } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: {
+            createdAt: true,
+            icd10Code: { select: { code: true, title: true } },
+          },
+        }),
+        this.prisma.admission.count({ where: { tenantId, patientId: id } }),
+      ]);
+
+    if (!patient) throw new NotFoundException('Patient not found');
+
+    const knownAllergies = patient.knownAllergies;
+    const hasHistory =
+      (knownAllergies?.trim().length ?? 0) > 0 ||
+      previousVisitCount > 0 ||
+      previousAdmissionCount > 0;
+
+    return {
+      hasHistory,
+      knownAllergies,
+      // Best available proxy: the patient row has no per-column change stamp, so
+      // this is the row's `updatedAt`, not specifically when the note last moved.
+      allergiesUpdatedAt: patient.updatedAt.toISOString(),
+      previousVisitCount,
+      lastVisitAt: toIsoDateTimeOrNull(lastVisit?.visitAt),
+      lastVisitPractitioner: lastVisit
+        ? `${lastVisit.practitioner.firstName} ${lastVisit.practitioner.lastName}`
+        : null,
+      recentDiagnoses: diagnoses.map((d) => ({
+        code: d.icd10Code.code,
+        title: d.icd10Code.title,
+        recordedAt: d.createdAt.toISOString(),
+      })),
+      previousAdmissionCount,
+    };
+  }
+
   async update(
     tenantId: string,
     id: string,
@@ -140,7 +214,6 @@ export class PatientsService {
     const nid = input.nationalId
       ? this.hashNationalId(input.nationalId)
       : undefined;
-    if (input.tpaId) await this.assertTpa(tenantId, input.tpaId);
 
     const patient = await this.prisma.patient.update({
       where: { id },
@@ -161,12 +234,6 @@ export class PatientsService {
         knownAllergies: input.knownAllergies,
         remarks: input.remarks,
 
-        tpaId: input.tpaId,
-        tpaMemberId: input.tpaMemberId,
-        ...(input.tpaValidTill !== undefined
-          ? { tpaValidTill: parseIsoDate(input.tpaValidTill) }
-          : {}),
-
         status: input.status,
         ...(input.address !== undefined
           ? { address: input.address as Prisma.InputJsonValue }
@@ -184,14 +251,6 @@ export class PatientsService {
       where: { id },
       data: { deletedAt: new Date(), status: 'inactive' },
     });
-  }
-
-  private async assertTpa(tenantId: string, tpaId: string): Promise<void> {
-    const tpa = await this.prisma.tpa.findFirst({
-      where: { id: tpaId, tenantId },
-      select: { id: true },
-    });
-    if (!tpa) throw new BadRequestException('Unknown TPA');
   }
 
   private hashNationalId(cnic: string): { hash: string; last4: string } {

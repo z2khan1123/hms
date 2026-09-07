@@ -326,7 +326,6 @@ export function OpdNewPage() {
                       {c.visitCount} visit(s)
                       <div className="muted">
                         Balance {formatMoney(c.balance.balanceMinor)}
-                        {c.tpa ? ` · ${c.tpa.name}` : ''}
                         {c.isCasualty ? ' · casualty' : ''}
                       </div>
                     </span>

@@ -27,7 +27,6 @@ import { WardsModule } from './modules/wards/wards.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
 import { PractitionersModule } from './modules/practitioners/practitioners.module.js';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module.js';
-import { TpaModule } from './modules/tpa/tpa.module.js';
 import { VitalsModule } from './modules/vitals/vitals.module.js';
 import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
 
@@ -60,7 +59,6 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     PatientsModule,
     PractitionersModule,
     AppointmentsModule,
-    TpaModule,
     ServicesModule,
     VocabularyModule,
     CasesModule,

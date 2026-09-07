@@ -1,6 +1,5 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import {
   BLOOD_TYPES,
@@ -9,9 +8,8 @@ import {
   type CreatePatientInput,
   type Gender,
   type MaritalStatus,
-  type Tpa,
+  type UpdatePatientInput,
 } from '@hms/shared';
-import { api } from '../lib/api';
 import { ErrorNote } from './QueryFeedback';
 
 const GENDERS: { value: Gender; label: string }[] = [
@@ -28,6 +26,9 @@ const MARITAL_STATUSES: { value: MaritalStatus; label: string }[] = [
   { value: 'separated', label: 'Separated' },
   { value: 'not_specified', label: 'Not specified' },
 ];
+
+/** Nullable fields the edit form can blank out — cleared to `null`, never `''`. */
+const CLEARABLE_KEYS = ['knownAllergies'] as const;
 
 /**
  * Blank inputs must not reach the schema: `''` fails `.email()`, the CNIC regex and
@@ -53,44 +54,61 @@ function stripEmpty(value: unknown): unknown {
 const createResolverSchema = z.preprocess(stripEmpty, createPatientSchema);
 const updateResolverSchema = z.preprocess(stripEmpty, updatePatientSchema);
 
-export interface PatientFormProps {
-  mode: 'create' | 'edit';
+type CreateProps = {
+  mode: 'create';
   defaultValues?: Partial<CreatePatientInput>;
+  onSubmit: (values: CreatePatientInput) => void;
+};
+
+type EditProps = {
+  mode: 'edit';
+  defaultValues?: Partial<UpdatePatientInput>;
+  onSubmit: (values: UpdatePatientInput) => void;
+};
+
+export type PatientFormProps = (CreateProps | EditProps) & {
   submitLabel: string;
   pending: boolean;
   serverError: unknown;
-  onSubmit: (values: CreatePatientInput) => void;
-}
+};
 
-export function PatientForm({
-  mode,
-  defaultValues,
-  submitLabel,
-  pending,
-  serverError,
-  onSubmit,
-}: PatientFormProps) {
+export function PatientForm(props: PatientFormProps) {
+  const { mode, defaultValues, submitLabel, pending, serverError } = props;
+  const isEdit = mode === 'edit';
+
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CreatePatientInput>({
-    resolver: zodResolver(
-      mode === 'create' ? createResolverSchema : updateResolverSchema,
-    ),
-    defaultValues: { gender: 'unknown', phone: '+92', ...defaultValues },
-  });
-
-  const tpas = useQuery({
-    queryKey: ['tpa', 'list'],
-    queryFn: async () => {
-      const { data } = await api.get<Tpa[]>('/tpa');
-      return data;
+  } = useForm<UpdatePatientInput>({
+    resolver: zodResolver(isEdit ? updateResolverSchema : createResolverSchema),
+    defaultValues: {
+      gender: 'unknown',
+      phone: '+92',
+      ...(defaultValues as Partial<UpdatePatientInput> | undefined),
     },
   });
 
+  const onValid = (values: UpdatePatientInput) => {
+    if (props.mode === 'create') {
+      // The create schema has already stripped the edit-only keys.
+      props.onSubmit(values as CreatePatientInput);
+      return;
+    }
+    // A field that held a value and is now blank must be cleared with `null`;
+    // an untouched blank field stays absent so PATCH leaves it alone.
+    const next: Record<string, unknown> = { ...values };
+    const initial = (props.defaultValues ?? {}) as Record<string, unknown>;
+    for (const key of CLEARABLE_KEYS) {
+      if (initial[key] != null && initial[key] !== '' && next[key] == null) {
+        next[key] = null;
+      }
+    }
+    props.onSubmit(next as UpdatePatientInput);
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleSubmit(onValid)} noValidate>
       <ErrorNote error={serverError} />
 
       <div className="card">
@@ -171,19 +189,21 @@ export function PatientForm({
               {errors.nationalId && (
                 <span className="field-error">{errors.nationalId.message}</span>
               )}
-              {mode === 'edit' && (
+              {isEdit && (
                 <span className="hint">
                   Stored hashed — leave blank to keep the CNIC on file.
                 </span>
               )}
             </div>
-            <div className="field">
-              <label htmlFor="photoUrl">Photo URL</label>
-              <input id="photoUrl" type="url" {...register('photoUrl')} />
-              {errors.photoUrl && (
-                <span className="field-error">{errors.photoUrl.message}</span>
-              )}
-            </div>
+            {isEdit && (
+              <div className="field">
+                <label htmlFor="photoUrl">Photo URL</label>
+                <input id="photoUrl" type="url" {...register('photoUrl')} />
+                {errors.photoUrl && (
+                  <span className="field-error">{errors.photoUrl.message}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -244,77 +264,39 @@ export function PatientForm({
                 <span className="field-error">{errors.address.city.message}</span>
               )}
             </div>
-            <div className="field">
-              <label htmlFor="address.province">Province</label>
-              <input id="address.province" {...register('address.province')} />
-            </div>
-            <div className="field">
-              <label htmlFor="address.postalCode">Postal code</label>
-              <input id="address.postalCode" {...register('address.postalCode')} />
-            </div>
           </div>
           <p className="hint">
             Leave the whole block blank to record no address. Country defaults to PK.
           </p>
         </div>
 
-        <div className="section">
-          <h2>Clinical notes</h2>
-          <div className="field">
-            <label htmlFor="knownAllergies">Known allergies</label>
-            <textarea
-              id="knownAllergies"
-              placeholder="Penicillin, sulfa drugs, latex…"
-              {...register('knownAllergies')}
-            />
-            <span className="hint">
-              Shown as a banner on every clinical screen for this patient.
-            </span>
-            {errors.knownAllergies && (
-              <span className="field-error">{errors.knownAllergies.message}</span>
-            )}
-          </div>
-          <div className="field">
-            <label htmlFor="remarks">Remarks</label>
-            <textarea id="remarks" {...register('remarks')} />
-            {errors.remarks && (
-              <span className="field-error">{errors.remarks.message}</span>
-            )}
-          </div>
-        </div>
-
-        <div className="section">
-          <h2>Payer / TPA</h2>
-          <ErrorNote error={tpas.error} fallback="Could not load TPA list" />
-          <div className="form-grid-3">
+        {isEdit && (
+          <div className="section">
+            <h2>Clinical notes</h2>
             <div className="field">
-              <label htmlFor="tpaId">TPA</label>
-              <select id="tpaId" {...register('tpaId')} disabled={tpas.isPending}>
-                <option value="">— Self-paying —</option>
-                {tpas.data?.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.code ? ` (${t.code})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="tpaMemberId">TPA member ID</label>
-              <input id="tpaMemberId" {...register('tpaMemberId')} />
-              {errors.tpaMemberId && (
-                <span className="field-error">{errors.tpaMemberId.message}</span>
+              <label htmlFor="knownAllergies">Known allergies</label>
+              <textarea
+                id="knownAllergies"
+                placeholder="Penicillin, sulfa drugs, latex…"
+                {...register('knownAllergies')}
+              />
+              <span className="hint">
+                Clinical — normally recorded by the doctor at consultation. Shown as a
+                banner on every clinical screen for this patient.
+              </span>
+              {errors.knownAllergies && (
+                <span className="field-error">{errors.knownAllergies.message}</span>
               )}
             </div>
             <div className="field">
-              <label htmlFor="tpaValidTill">Valid till</label>
-              <input id="tpaValidTill" type="date" {...register('tpaValidTill')} />
-              {errors.tpaValidTill && (
-                <span className="field-error">{errors.tpaValidTill.message}</span>
+              <label htmlFor="remarks">Remarks</label>
+              <textarea id="remarks" {...register('remarks')} />
+              {errors.remarks && (
+                <span className="field-error">{errors.remarks.message}</span>
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="row" style={{ marginTop: 16 }}>

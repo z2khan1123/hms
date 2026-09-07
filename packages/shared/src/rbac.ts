@@ -81,8 +81,10 @@ export const PERMISSIONS = [
   'bill:create',
   'bill:read',
   'bill:delete',
-  /// release an unpaid order to a department (panel patient or waiver)
+  /// release an unpaid order to a department (a waiver)
   'bill:approve',
+  /// reduce an unpaid charge — a doctor obliging a patient on his own fee
+  'bill:discount',
   'payment:create',
   'payment:read',
   'payment:reverse',
@@ -96,9 +98,6 @@ export const PERMISSIONS = [
   'admission:discharge',
   'nursenote:read',
   'nursenote:write',
-  // payers
-  'tpa:read',
-  'tpa:manage',
   // audit
   'audit:read',
 ] as const;
@@ -121,7 +120,6 @@ const READ_ONLY_SET: Permission[] = [
   'ward:read',
   'admission:read',
   'nursenote:read',
-  'tpa:read',
 ];
 
 /**
@@ -164,7 +162,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'admission:read',
     'admission:transfer',
     'nursenote:read',
-    'tpa:read',
   ],
 
   doctor: [
@@ -189,6 +186,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'order:create',
     'order:read',
     'order:cancel',
+    'bill:discount',
     'prescription:read',
     'prescription:write',
     'ward:read',
@@ -229,14 +227,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'bill:read',
     'bill:delete',
     'bill:approve',
+    'bill:discount',
     'order:read',
     'ward:read',
     'admission:read',
     'payment:create',
     'payment:read',
     'payment:reverse',
-    'tpa:read',
-    'tpa:manage',
     'audit:read',
   ],
 

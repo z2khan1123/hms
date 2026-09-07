@@ -46,25 +46,22 @@ export const createPatientSchema = z.object({
   nationalId: cnicSchema.optional(),
 
   photoUrl: z.string().trim().url().max(2048).optional(),
-  knownAllergies: z.string().trim().max(2000).optional(),
   remarks: z.string().trim().max(2000).optional(),
-
-  tpaId: z.string().uuid().optional(),
-  tpaMemberId: z.string().trim().max(64).optional(),
-  tpaValidTill: isoDateSchema.optional(),
 });
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
 
+/**
+ * Everything a doctor or an administrator can change later. Deliberately wider
+ * than registration: allergies are a CLINICAL fact a receptionist cannot know,
+ * and payer membership is paperwork that arrives after the patient is in the
+ * building. Neither belongs on the front-desk form.
+ */
 export const updatePatientSchema = createPatientSchema.partial().extend({
   status: patientStatusSchema.optional(),
+  /** Recorded by the doctor at consultation, not at the desk. */
+  knownAllergies: z.string().trim().max(2000).nullish(),
 });
 export type UpdatePatientInput = z.infer<typeof updatePatientSchema>;
-
-export const patientTpaSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  code: z.string().nullable(),
-});
 
 export const patientSchema = z.object({
   id: z.string().uuid(),
@@ -87,10 +84,6 @@ export const patientSchema = z.object({
   photoUrl: z.string().nullable(),
   knownAllergies: z.string().nullable(),
   remarks: z.string().nullable(),
-
-  tpa: patientTpaSchema.nullable(),
-  tpaMemberId: z.string().nullable(),
-  tpaValidTill: isoDateSchema.nullable(),
 
   status: patientStatusSchema,
   createdAt: z.string(),
@@ -145,3 +138,29 @@ export function formatAge(birthDate: string, now = new Date()): string {
   if (months > 0) return `${months}m ${days}d`;
   return `${days}d`;
 }
+
+/**
+ * What a doctor is shown when a returning patient reaches him. The front desk
+ * cannot know a patient is allergic — the doctor who diagnosed it did, on an
+ * earlier visit — so the record has to carry that forward and put it in front
+ * of the next doctor rather than hoping he opens the right tab.
+ */
+export const patientHistoryAlertSchema = z.object({
+  /** False for a genuinely new patient — the client shows nothing. */
+  hasHistory: z.boolean(),
+  knownAllergies: z.string().nullable(),
+  /** When the allergy note was last changed, so the doctor can judge its age. */
+  allergiesUpdatedAt: z.string().nullable(),
+  previousVisitCount: z.number().int(),
+  lastVisitAt: z.string().nullable(),
+  lastVisitPractitioner: z.string().nullable(),
+  recentDiagnoses: z.array(
+    z.object({
+      code: z.string(),
+      title: z.string(),
+      recordedAt: z.string(),
+    }),
+  ),
+  previousAdmissionCount: z.number().int(),
+});
+export type PatientHistoryAlert = z.infer<typeof patientHistoryAlertSchema>;

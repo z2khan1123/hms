@@ -15,10 +15,6 @@ export const openCaseSchema = z.object({
   patientId: z.string().uuid(),
   isCasualty: z.boolean().optional(),
   reference: z.string().trim().max(160).optional(),
-  /** Defaults to the patient's current TPA membership when omitted. */
-  tpaId: z.string().uuid().optional(),
-  tpaMemberId: z.string().trim().max(64).optional(),
-  tpaValidTill: isoDateSchema.optional(),
 });
 export type OpenCaseInput = z.infer<typeof openCaseSchema>;
 
@@ -42,11 +38,6 @@ export const caseSchema = z.object({
   isCasualty: z.boolean(),
   reference: z.string().nullable(),
   patient: patientSummarySchema,
-  tpa: z
-    .object({ id: z.string().uuid(), name: z.string() })
-    .nullable(),
-  tpaMemberId: z.string().nullable(),
-  tpaValidTill: isoDateSchema.nullable(),
   visitCount: z.number().int(),
   balance: caseBalanceSchema,
   createdAt: isoDateTimeSchema,

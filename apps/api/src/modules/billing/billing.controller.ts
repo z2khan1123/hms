@@ -6,11 +6,14 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import {
   type AddBillItemInput,
   addBillItemSchema,
+  type AdjustBillItemInput,
+  adjustBillItemSchema,
   approveBillItemSchema,
   type CreatePaymentInput,
   createPaymentSchema,
@@ -50,6 +53,21 @@ export class BillingController {
       id,
       dto.reason,
     );
+  }
+
+  /**
+   * Reduce a charge that has not been paid yet — in practice a doctor obliging a
+   * patient on his own consultation fee, from his own view rather than sending
+   * the patient back to the front desk. Only a `pending` line may be adjusted.
+   */
+  @Patch('bill-items/:id')
+  @Permissions('bill:discount')
+  adjustBillItem(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(adjustBillItemSchema)) dto: AdjustBillItemInput,
+  ) {
+    return this.billing.adjustBillItem(requireTenant(user), user.id, id, dto);
   }
 
   @Post('bill-items')

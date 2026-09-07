@@ -48,7 +48,6 @@ async function main(): Promise<void> {
   await seedUsers(tenantId);
   await seedPractitioners(tenantId);
   await seedPatients(tenantId);
-  await seedTpas(tenantId);
   await seedServices(tenantId);
   await seedClinicalVocabulary(tenantId);
   await seedIcd10();
@@ -225,30 +224,6 @@ async function seedPatients(tenantId: string): Promise<void> {
     ],
   });
   await prisma.tenant.update({ where: { id: tenantId }, data: { mrnSeq: 2 } });
-}
-
-// ---------------------------------------------------------------------------
-// Payers
-// ---------------------------------------------------------------------------
-
-async function seedTpas(tenantId: string): Promise<void> {
-  const tpas: { name: string; code: string }[] = [
-    { name: 'State Life Insurance', code: 'SLIC' },
-    { name: 'Jubilee Health', code: 'JBL' },
-    { name: 'Adamjee Health', code: 'ADM' },
-    { name: 'EFU Health', code: 'EFU' },
-    { name: 'Pak-Qatar Takaful', code: 'PQT' },
-  ];
-  for (const t of tpas) {
-    const found = await prisma.tpa.findFirst({
-      where: { tenantId, name: t.name },
-    });
-    if (!found) {
-      await prisma.tpa.create({
-        data: { tenantId, name: t.name, code: t.code },
-      });
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

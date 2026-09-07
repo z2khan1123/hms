@@ -4,7 +4,7 @@ import {
   type CaseBalanceDto,
   computeCaseBalance,
 } from '@hms/shared';
-import { toIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js';
+import { toIsoDateTimeOrNull } from '../../common/util/dates.js';
 import {
   patientSummarySelect,
   toPatientSummary,
@@ -17,7 +17,6 @@ import {
  */
 export const caseDetailInclude = {
   patient: { select: patientSummarySelect },
-  tpa: { select: { id: true, name: true } },
   billItems: { select: { netMinor: true } },
   payments: { select: { amountMinor: true, reversedAt: true } },
   _count: { select: { opdVisits: true } },
@@ -51,9 +50,6 @@ export function toCaseDto(c: CaseDetailRow): CaseDto {
     isCasualty: c.isCasualty,
     reference: c.reference,
     patient: toPatientSummary(c.patient),
-    tpa: c.tpa ? { id: c.tpa.id, name: c.tpa.name } : null,
-    tpaMemberId: c.tpaMemberId,
-    tpaValidTill: toIsoDateOrNull(c.tpaValidTill),
     visitCount: c._count.opdVisits,
     balance: balanceOf(c),
     createdAt: c.createdAt.toISOString(),
