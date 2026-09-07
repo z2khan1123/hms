@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateTimeSchema } from './common.js';
+import { isoDateTimeSchema, booleanQuery } from './common.js';
 
 /**
  * General supplies — syringes, linen, PPE — distinct from pharmacy stock, which
@@ -25,6 +25,11 @@ export const STOCK_MOVE_KIND_LABELS: Record<StockMoveKind, string> = {
 export const createNamedSchema = z.object({
   name: z.string().trim().min(1).max(120),
 });
+export const updateNamedSchema = createNamedSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+export type UpdateNamedInput = z.infer<typeof updateNamedSchema>;
+
 export const namedRecordSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -52,6 +57,7 @@ export const updateInventoryItemSchema = createInventoryItemSchema
     reorderLevel: z.number().int().min(0).nullish(),
     isActive: z.boolean().optional(),
   });
+export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>;
 
 export const inventoryItemSchema = z.object({
   id: z.string().uuid(),
@@ -78,8 +84,8 @@ export const inventoryItemListQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   categoryId: z.string().uuid().optional(),
   storeId: z.string().uuid().optional(),
-  lowStockOnly: z.coerce.boolean().optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  lowStockOnly: booleanQuery.optional(),
+  includeInactive: booleanQuery.optional(),
 });
 
 // --- movements -------------------------------------------------------------

@@ -28,6 +28,9 @@ import { WardSetupPage } from './pages/WardSetupPage';
 import { MedicinesPage } from './pages/MedicinesPage';
 import { StockPage } from './pages/StockPage';
 import { DispensePage } from './pages/DispensePage';
+import { FinancePage } from './pages/FinancePage';
+import { ReferralsPage } from './pages/ReferralsPage';
+import { InventoryPage } from './pages/InventoryPage';
 
 export default function App() {
   return (
@@ -60,6 +63,9 @@ export default function App() {
         <Route path="pharmacy/medicines" element={<MedicinesPage />} />
         <Route path="pharmacy/stock" element={<StockPage />} />
         <Route path="pharmacy/dispense" element={<DispensePage />} />
+        <Route path="finance" element={<FinancePage />} />
+        <Route path="finance/referrals" element={<ReferralsPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateSchema, isoDateTimeSchema } from './common.js';
+import { isoDateSchema, isoDateTimeSchema, booleanQuery } from './common.js';
 import { patientSummarySchema } from './patient.js';
 
 // --- allergies -------------------------------------------------------------
@@ -101,8 +101,8 @@ export const medicineListQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   categoryId: z.string().uuid().optional(),
   /** Only medicines at or below their reorder level. */
-  lowStockOnly: z.coerce.boolean().optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  lowStockOnly: booleanQuery.optional(),
+  includeInactive: booleanQuery.optional(),
 });
 
 // --- batches and purchasing ------------------------------------------------

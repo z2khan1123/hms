@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateTimeSchema } from './common.js';
+import { isoDateTimeSchema, booleanQuery } from './common.js';
 import { patientSummarySchema } from './patient.js';
 import { serviceDepartmentSchema } from './services.js';
 
@@ -112,7 +112,7 @@ export const serviceOrderListQuerySchema = z.object({
   opdVisitId: z.string().uuid().optional(),
   caseId: z.string().uuid().optional(),
   /** Department worklists default to hiding orders that are not yet payable. */
-  releasableOnly: z.coerce.boolean().optional(),
+  releasableOnly: booleanQuery.optional(),
   q: z.string().trim().max(120).optional(),
 });
 

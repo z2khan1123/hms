@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateSchema, isoDateTimeSchema } from './common.js';
+import { isoDateSchema, isoDateTimeSchema, booleanQuery } from './common.js';
 import { cnicSchema } from './patient.js';
 import { ROLES } from './rbac.js';
 
@@ -87,7 +87,7 @@ export const staffListQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   departmentId: z.string().uuid().optional(),
   role: z.enum(ROLES).optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: booleanQuery.optional(),
 });
 
 // --- attendance ------------------------------------------------------------

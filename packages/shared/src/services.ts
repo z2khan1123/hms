@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { booleanQuery } from './common.js';
 
 /**
  * Optional grouping on a service — only for filtering long lists and grouping
@@ -64,5 +65,5 @@ export type Service = z.infer<typeof serviceSchema>;
 export const serviceListQuerySchema = z.object({
   department: serviceDepartmentSchema.optional(),
   q: z.string().trim().max(120).optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: booleanQuery.optional(),
 });

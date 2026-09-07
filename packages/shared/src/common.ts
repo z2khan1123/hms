@@ -10,6 +10,21 @@ export const isoDateSchema = z
 /** ISO datetime with offset, e.g. 2026-09-06T09:00:00.000Z */
 export const isoDateTimeSchema = z.string().datetime({ offset: true });
 
+/**
+ * A boolean carried in a query string.
+ *
+ * NOT `z.coerce.boolean()` — that is `Boolean(value)`, so the string "false"
+ * coerces to true and `?includeInactive=false` would switch the flag ON. This
+ * reads the words people actually send.
+ */
+export const booleanQuery = z
+  .union([z.boolean(), z.string()])
+  .transform((v) => {
+    if (typeof v === 'boolean') return v;
+    const t = v.trim().toLowerCase();
+    return t === 'true' || t === '1' || t === 'yes' || t === 'on';
+  });
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),

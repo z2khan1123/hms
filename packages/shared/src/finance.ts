@@ -14,6 +14,11 @@ export const createLedgerHeadSchema = z.object({
 });
 export type CreateLedgerHeadInput = z.infer<typeof createLedgerHeadSchema>;
 
+export const updateLedgerHeadSchema = createLedgerHeadSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+export type UpdateLedgerHeadInput = z.infer<typeof updateLedgerHeadSchema>;
+
 export const ledgerHeadSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -93,6 +98,7 @@ export const updateReferrerSchema = createReferrerSchema.partial().extend({
   category: z.string().trim().max(80).nullish(),
   isActive: z.boolean().optional(),
 });
+export type UpdateReferrerInput = z.infer<typeof updateReferrerSchema>;
 
 export const referrerSchema = z.object({
   id: z.string().uuid(),

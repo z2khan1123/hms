@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateTimeSchema } from './common.js';
+import { isoDateTimeSchema, booleanQuery } from './common.js';
 import { patientSummarySchema } from './patient.js';
 import { serviceDepartmentSchema } from './services.js';
 import { vitalFlagSchema } from './vitals.js';
@@ -73,7 +73,7 @@ export type LabTest = z.infer<typeof labTestSchema>;
 export const labTestListQuerySchema = z.object({
   department: serviceDepartmentSchema.optional(),
   q: z.string().trim().max(120).optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: booleanQuery.optional(),
 });
 
 // --- collecting and reporting ----------------------------------------------
@@ -156,7 +156,7 @@ export const diagnosticReportListQuerySchema = z.object({
   patientId: z.string().uuid().optional(),
   caseId: z.string().uuid().optional(),
   /** Only reports that are still open, i.e. not yet finalised. */
-  pendingOnly: z.coerce.boolean().optional(),
+  pendingOnly: booleanQuery.optional(),
   q: z.string().trim().max(120).optional(),
 });
 

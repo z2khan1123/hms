@@ -55,6 +55,8 @@ async function main(): Promise<void> {
   await seedDiagnostics(tenantId);
   await seedWardsAndBeds(tenantId);
   await seedPharmacy(tenantId);
+  await seedFinance(tenantId);
+  await seedInventory(tenantId);
 
   console.log('\nSeed complete.');
   console.log('  Tenant:   %s (%s)', DEMO.tenantName, tenantId);
@@ -761,6 +763,147 @@ async function ensureBatch(
   await prisma.medicineBatch.create({
     data: { tenantId, medicineId, ...batch },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Finance — ledger heads and referrers. Entries themselves are left for the
+// user to post; the heads are what make the "new income / new expense" forms
+// usable out of the box.
+// ---------------------------------------------------------------------------
+
+async function seedFinance(tenantId: string): Promise<void> {
+  const incomeHeads = [
+    'Consultation',
+    'Pharmacy',
+    'Laboratory',
+    'Radiology',
+    'Room rent',
+    'Other',
+  ];
+  for (const name of incomeHeads) {
+    const found = await prisma.incomeHead.findFirst({
+      where: { tenantId, name },
+    });
+    if (!found) await prisma.incomeHead.create({ data: { tenantId, name } });
+  }
+
+  const expenseHeads = [
+    'Salaries',
+    'Rent',
+    'Utilities',
+    'Medical supplies',
+    'Equipment',
+    'Maintenance',
+    'Other',
+  ];
+  for (const name of expenseHeads) {
+    const found = await prisma.expenseHead.findFirst({
+      where: { tenantId, name },
+    });
+    if (!found) await prisma.expenseHead.create({ data: { tenantId, name } });
+  }
+
+  const referrers: { name: string; category: string; commissionBps: number }[] =
+    [
+      { name: 'Dr Imran Clinic', category: 'Doctor', commissionBps: 1000 },
+      { name: 'City Medical Store', category: 'Pharmacy', commissionBps: 500 },
+    ];
+  for (const r of referrers) {
+    const found = await prisma.referrer.findFirst({
+      where: { tenantId, name: r.name },
+    });
+    if (!found) {
+      await prisma.referrer.create({
+        data: {
+          tenantId,
+          name: r.name,
+          category: r.category,
+          commissionBps: r.commissionBps,
+        },
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inventory — categories, two stores, a handful of general supplies, and one
+// opening `receipt` per item into the Main Store so quantities are non-zero.
+// "Face mask" is deliberately received below its reorder level so the
+// low-stock filter has something to show.
+// ---------------------------------------------------------------------------
+
+async function seedInventory(tenantId: string): Promise<void> {
+  const categoryByName = new Map<string, string>();
+  for (const name of ['Consumables', 'Linen', 'PPE', 'Stationery', 'Equipment']) {
+    const found =
+      (await prisma.itemCategory.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.itemCategory.create({ data: { tenantId, name } }));
+    categoryByName.set(name, found.id);
+  }
+
+  const storeByName = new Map<string, string>();
+  for (const name of ['Main Store', 'Ward Store']) {
+    const found =
+      (await prisma.store.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.store.create({ data: { tenantId, name } }));
+    storeByName.set(name, found.id);
+  }
+  const mainStoreId = storeByName.get('Main Store')!;
+
+  const items: {
+    name: string;
+    category: string;
+    unit: string;
+    reorderLevel: number;
+    opening: number;
+  }[] = [
+    // opening > reorderLevel everywhere except Face mask, which is left low.
+    { name: 'Syringe 5ml', category: 'Consumables', unit: 'piece', reorderLevel: 500, opening: 800 },
+    { name: 'Surgical gloves', category: 'PPE', unit: 'pair', reorderLevel: 300, opening: 450 },
+    { name: 'Bed sheet', category: 'Linen', unit: 'piece', reorderLevel: 100, opening: 220 },
+    { name: 'Face mask', category: 'PPE', unit: 'piece', reorderLevel: 1000, opening: 400 },
+    { name: 'Cotton roll', category: 'Consumables', unit: 'roll', reorderLevel: 200, opening: 260 },
+  ];
+
+  for (const it of items) {
+    const categoryId = categoryByName.get(it.category)!;
+    let item = await prisma.inventoryItem.findFirst({
+      where: { tenantId, name: it.name },
+    });
+    item ??= await prisma.inventoryItem.create({
+      data: {
+        tenantId,
+        name: it.name,
+        categoryId,
+        unit: it.unit,
+        reorderLevel: it.reorderLevel,
+      },
+    });
+
+    // Idempotent opening balance: one receipt per (item, Main Store) tagged so
+    // re-running the seed does not stack another one on top.
+    const opening = await prisma.stockMove.findFirst({
+      where: {
+        tenantId,
+        itemId: item.id,
+        storeId: mainStoreId,
+        kind: 'receipt',
+        note: 'Opening balance',
+      },
+    });
+    if (!opening) {
+      await prisma.stockMove.create({
+        data: {
+          tenantId,
+          itemId: item.id,
+          storeId: mainStoreId,
+          kind: 'receipt',
+          quantity: it.opening,
+          note: 'Opening balance',
+        },
+      });
+    }
+  }
 }
 
 main()

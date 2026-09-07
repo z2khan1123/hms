@@ -177,7 +177,7 @@ const READ_ONLY_SET: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   platform_admin: ['tenant:manage', 'user:read'],
 
-  hospital_admin: [...PERMISSIONS.filter((p) => p !== 'tenant:manage')],
+  hospital_admin: PERMISSIONS.filter((p) => p !== 'tenant:manage'),
 
   receptionist: [
     'patient:create',

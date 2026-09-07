@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateSchema, isoDateTimeSchema } from './common.js';
+import { isoDateTimeSchema } from './common.js';
 import { patientSummarySchema } from './patient.js';
 
 export const caseStatusSchema = z.enum(['open', 'closed', 'moved_to_ipd']);

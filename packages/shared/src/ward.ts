@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { booleanQuery } from './common.js';
 
 /**
  * Beds, wards and floors are entered by each hospital. A seven-bed clinic and a
@@ -179,5 +180,5 @@ export type BedBoard = z.infer<typeof bedBoardSchema>;
 export const bedListQuerySchema = z.object({
   wardId: z.string().uuid().optional(),
   status: bedStatusSchema.optional(),
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: booleanQuery.optional(),
 });
