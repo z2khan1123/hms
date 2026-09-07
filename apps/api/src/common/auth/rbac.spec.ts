@@ -68,6 +68,16 @@ const ACT_WITHOUT_READ: ReadonlyArray<readonly [Permission, Permission]> = [
   ['finance:manage', 'finance:read'],
   ['referral:manage', 'referral:read'],
   ['inventory:manage', 'inventory:read'],
+  // Human resources.
+  ['staff:manage', 'staff:read'],
+  ['attendance:mark', 'attendance:read'],
+  ['attendance:mark', 'staff:read'],
+  ['leave:apply', 'leave:read'],
+  ['leave:approve', 'leave:read'],
+  ['roster:manage', 'roster:read'],
+  ['roster:manage', 'staff:read'],
+  ['payroll:manage', 'payroll:read'],
+  ['payroll:manage', 'staff:read'],
 ];
 
 describe('RBAC matrix', () => {

@@ -113,6 +113,18 @@ export const PERMISSIONS = [
   'admission:discharge',
   'nursenote:read',
   'nursenote:write',
+  // human resources
+  'staff:read',
+  'staff:manage',
+  'attendance:read',
+  'attendance:mark',
+  'leave:read',
+  'leave:apply',
+  'leave:approve',
+  'roster:read',
+  'roster:manage',
+  'payroll:read',
+  'payroll:manage',
   // finance ledgers and referrals
   'finance:read',
   'finance:manage',
@@ -152,6 +164,10 @@ const READ_ONLY_SET: Permission[] = [
   'finance:read',
   'referral:read',
   'inventory:read',
+  'staff:read',
+  'attendance:read',
+  'leave:read',
+  'roster:read',
 ];
 
 /**
@@ -195,6 +211,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'admission:transfer',
     'nursenote:read',
     'allergy:read',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
 
   doctor: [
@@ -237,6 +258,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'admission:discharge',
     'nursenote:read',
     'nursenote:write',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
 
   nurse: [
@@ -260,6 +286,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'medicine:read',
     'allergy:read',
     'dispense:read',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
 
   accountant: [
@@ -278,6 +309,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'dispense:read',
     'finance:read',
     'finance:manage',
+    'staff:read',
+    'payroll:read',
+    'payroll:manage',
     'referral:read',
     'referral:manage',
     'inventory:read',
@@ -287,6 +321,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'payment:read',
     'payment:reverse',
     'audit:read',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
 
   // Department staff work a queue of released orders. Results arrive in Phase 3.
@@ -294,11 +333,21 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'order:update', 'prescription:read',
     'labtest:read', 'labtest:manage', 'report:read', 'report:write',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
   radiologist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'order:update', 'prescription:read',
     'labtest:read', 'labtest:manage', 'report:read', 'report:write',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
   pharmacist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
@@ -309,6 +358,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // Dispensing without sight of the patient's allergies would be negligent.
     'allergy:read',
     'bill:read', 'bill:create',
+    // Everyone employed here sees their own roster and asks for leave.
+    'attendance:read',
+    'leave:read',
+    'leave:apply',
+    'roster:read',
   ],
 
   read_only: READ_ONLY_SET,

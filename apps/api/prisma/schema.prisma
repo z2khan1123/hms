@@ -153,6 +153,34 @@ enum StockMoveKind {
   adjustment
 }
 
+enum AttendanceStatus {
+  present
+  absent
+  late
+  half_day
+  on_leave
+  holiday
+}
+
+enum LeaveRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+/// A payroll run is locked once paid. Payslips are documents people keep.
+enum PayrollRunStatus {
+  draft
+  finalised
+  paid
+}
+
+enum PayslipLineKind {
+  earning
+  deduction
+}
+
 enum VitalFlag {
   low
   normal
@@ -239,6 +267,17 @@ model Tenant {
   stores                Store[]
   inventoryItems        InventoryItem[]
   stockMoves            StockMove[]
+  departments           Department[]
+  designations          Designation[]
+  staffProfiles         StaffProfile[]
+  staffAttendances      StaffAttendance[]
+  leaveTypes            LeaveType[]
+  leaveRequests         LeaveRequest[]
+  shifts                Shift[]
+  rosterEntries         RosterEntry[]
+  payrollRuns           PayrollRun[]
+  payslips              Payslip[]
+  payslipLines          PayslipLine[]
 }
 
 model User {
@@ -257,6 +296,7 @@ model User {
 
   refreshTokens RefreshToken[]
   practitioner  Practitioner?
+  staffProfile  StaffProfile?
 
   @@unique([tenantId, email])
   @@index([email])
@@ -784,7 +824,8 @@ model Ward {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  beds Bed[]
+  beds          Bed[]
+  rosterEntries RosterEntry[]
 
   @@unique([tenantId, name])
   @@index([tenantId, floorId])
@@ -1446,6 +1487,270 @@ model StockMove {
 
   @@index([tenantId, itemId, storeId])
   @@index([tenantId, movedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Human resources
+//
+// The login (User) stays lean and is about access. Employment facts — joining
+// date, salary, department — live here, so an HR change never touches auth.
+// ---------------------------------------------------------------------------
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff StaffProfile[]
+
+  @@unique([tenantId, name])
+}
+
+model Designation {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff StaffProfile[]
+
+  @@unique([tenantId, name])
+}
+
+model StaffProfile {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// One profile per login. Employment data hangs off the identity, not inside it.
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  staffNo String
+
+  departmentId  String?      @db.Uuid
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  designationId String?      @db.Uuid
+  designation   Designation? @relation(fields: [designationId], references: [id])
+
+  phone           String?
+  emergencyPhone  String?
+  address         String?
+  /// CNIC, hashed exactly as a patient's is. Never stored in plain text.
+  nationalIdHash  String?
+  nationalIdLast4 String?
+
+  joinedOn DateTime  @db.Date
+  leftOn   DateTime? @db.Date
+
+  /// Monthly basic pay, in minor units. A default for payroll, always editable
+  /// on the payslip itself.
+  basicSalaryMinor Int?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendance    StaffAttendance[]
+  leaveRequests LeaveRequest[]
+  rosterEntries RosterEntry[]
+  payslips      Payslip[]
+
+  @@unique([tenantId, staffNo])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, isActive])
+}
+
+model StaffAttendance {
+  id       String       @id @default(uuid()) @db.Uuid
+  tenantId String       @db.Uuid
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  staffId  String       @db.Uuid
+  staff    StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  /// One row per person per day. The unique constraint is the point.
+  onDate   DateTime         @db.Date
+  status   AttendanceStatus
+  checkIn  DateTime?
+  checkOut DateTime?
+  note     String?
+
+  markedById String?  @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, staffId, onDate])
+  @@index([tenantId, onDate])
+}
+
+model LeaveType {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  /// Entitlement per year. Null means uncapped, e.g. unpaid leave.
+  daysPerYear Int?
+  isPaid      Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  requests LeaveRequest[]
+
+  @@unique([tenantId, name])
+}
+
+model LeaveRequest {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @db.Uuid
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  staffId     String       @db.Uuid
+  staff       StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  leaveTypeId String       @db.Uuid
+  leaveType   LeaveType    @relation(fields: [leaveTypeId], references: [id])
+
+  fromDate DateTime @db.Date
+  toDate   DateTime @db.Date
+  /// Whole days requested, stored because half-days and holidays make it more
+  /// than a date subtraction.
+  days     Int
+  reason   String?
+
+  status       LeaveRequestStatus @default(pending)
+  decidedById  String?            @db.Uuid
+  decidedAt    DateTime?
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, staffId, fromDate])
+  @@index([tenantId, status])
+}
+
+model Shift {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  /// Wall-clock times as HH:mm. A night shift may end before it starts.
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rosterEntries RosterEntry[]
+
+  @@unique([tenantId, name])
+}
+
+model RosterEntry {
+  id       String       @id @default(uuid()) @db.Uuid
+  tenantId String       @db.Uuid
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  staffId  String       @db.Uuid
+  staff    StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  shiftId  String       @db.Uuid
+  shift    Shift        @relation(fields: [shiftId], references: [id])
+
+  onDate DateTime @db.Date
+  wardId String?  @db.Uuid
+  ward   Ward?    @relation(fields: [wardId], references: [id])
+  note   String?
+
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, staffId, onDate, shiftId])
+  @@index([tenantId, onDate])
+}
+
+model PayrollRun {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// The month this pays for.
+  year  Int
+  month Int
+
+  status PayrollRunStatus @default(draft)
+
+  finalisedAt   DateTime?
+  finalisedById String?   @db.Uuid
+  paidAt        DateTime?
+  note          String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payslips Payslip[]
+
+  @@unique([tenantId, year, month])
+  @@index([tenantId, status])
+}
+
+/// A payslip is a document someone keeps. Its figures are SNAPSHOTS — changing
+/// a salary later must never alter what a person was already told they earned.
+model Payslip {
+  id       String       @id @default(uuid()) @db.Uuid
+  tenantId String       @db.Uuid
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  runId    String       @db.Uuid
+  run      PayrollRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  staffId  String       @db.Uuid
+  staff    StaffProfile @relation(fields: [staffId], references: [id])
+
+  staffNameSnapshot   String
+  staffNoSnapshot     String
+  designationSnapshot String?
+
+  basicMinor      Int
+  earningsMinor   Int @default(0)
+  deductionsMinor Int @default(0)
+  netMinor        Int
+
+  /// Attendance that fed the figures, kept so a payslip can be explained later.
+  workedDays Int?
+  absentDays Int?
+  leaveDays  Int?
+
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines PayslipLine[]
+
+  @@unique([runId, staffId])
+  @@index([tenantId, staffId])
+}
+
+model PayslipLine {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @db.Uuid
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  payslipId String  @db.Uuid
+  payslip   Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  kind        PayslipLineKind
+  name        String
+  amountMinor Int
+  sortOrder   Int             @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, payslipId])
 }
 
 // ---------------------------------------------------------------------------
