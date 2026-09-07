@@ -145,6 +145,14 @@ enum AllergySeverity {
   severe
 }
 
+/// Which way stock moved. Quantity on hand is DERIVED by summing these — there
+/// is no stored balance to fall out of step with the movements that made it.
+enum StockMoveKind {
+  receipt
+  issue
+  adjustment
+}
+
 enum VitalFlag {
   low
   normal
@@ -221,6 +229,16 @@ model Tenant {
   dispenses             Dispense[]
   dispenseItems         DispenseItem[]
   patientAllergies      PatientAllergy[]
+  incomeHeads           IncomeHead[]
+  incomes               Income[]
+  expenseHeads          ExpenseHead[]
+  expenses              Expense[]
+  referrers             Referrer[]
+  referralPayments      ReferralPayment[]
+  itemCategories        ItemCategory[]
+  stores                Store[]
+  inventoryItems        InventoryItem[]
+  stockMoves            StockMove[]
 }
 
 model User {
@@ -402,8 +420,11 @@ model Case {
   /// trail deliberately stores no request bodies, so it is kept on the row.
   closedReason String?
 
-  isCasualty Boolean @default(false)
+  isCasualty Boolean   @default(false)
   reference  String?
+  /// Who sent the patient, when a commission is owed for it.
+  referrerId String?   @db.Uuid
+  referrer   Referrer? @relation(fields: [referrerId], references: [id])
 
   // Payer snapshot at the time the case was opened — TPA terms can change later.
   tpaId        String?   @db.Uuid
@@ -1224,6 +1245,207 @@ model PatientAllergy {
 
   @@unique([tenantId, patientId, substance])
   @@index([tenantId, patientId])
+}
+
+// ---------------------------------------------------------------------------
+// Finance — money in and out that is not a patient bill
+// ---------------------------------------------------------------------------
+
+model IncomeHead {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  incomes Income[]
+
+  @@unique([tenantId, name])
+}
+
+model Income {
+  id       String     @id @default(uuid()) @db.Uuid
+  tenantId String     @db.Uuid
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  headId   String     @db.Uuid
+  head     IncomeHead @relation(fields: [headId], references: [id])
+
+  description String
+  amountMinor Int
+  receivedAt  DateTime @default(now())
+  invoiceNo   String?
+  note        String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, headId])
+}
+
+model ExpenseHead {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses Expense[]
+
+  @@unique([tenantId, name])
+}
+
+model Expense {
+  id       String      @id @default(uuid()) @db.Uuid
+  tenantId String      @db.Uuid
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  headId   String      @db.Uuid
+  head     ExpenseHead @relation(fields: [headId], references: [id])
+
+  description String
+  amountMinor Int
+  paidAt      DateTime @default(now())
+  invoiceNo   String?
+  note        String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, paidAt])
+  @@index([tenantId, headId])
+}
+
+/// Someone who sends patients to the hospital and is paid a commission for it.
+model Referrer {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name          String
+  phone         String?
+  category      String?
+  /// Commission as basis points of the case's net billing. A suggestion — what
+  /// is actually paid is entered on the payment.
+  commissionBps Int?
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cases    Case[]
+  payments ReferralPayment[]
+
+  @@unique([tenantId, name])
+}
+
+model ReferralPayment {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  referrerId String   @db.Uuid
+  referrer   Referrer @relation(fields: [referrerId], references: [id])
+
+  amountMinor Int
+  paidAt      DateTime  @default(now())
+  periodFrom  DateTime? @db.Date
+  periodTo    DateTime? @db.Date
+  note        String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, referrerId, paidAt])
+}
+
+// ---------------------------------------------------------------------------
+// Inventory — general supplies, distinct from pharmacy stock
+//
+// Quantity on hand is DERIVED by summing StockMove rows. There is no stored
+// balance, so a movement and the balance it produced can never disagree.
+// ---------------------------------------------------------------------------
+
+model ItemCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items InventoryItem[]
+
+  @@unique([tenantId, name])
+}
+
+model Store {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moves StockMove[]
+
+  @@unique([tenantId, name])
+}
+
+model InventoryItem {
+  id         String        @id @default(uuid()) @db.Uuid
+  tenantId   String        @db.Uuid
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  categoryId String?       @db.Uuid
+  category   ItemCategory? @relation(fields: [categoryId], references: [id])
+
+  name         String
+  unit         String?
+  reorderLevel Int?
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moves StockMove[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, categoryId])
+}
+
+model StockMove {
+  id       String        @id @default(uuid()) @db.Uuid
+  tenantId String        @db.Uuid
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  itemId   String        @db.Uuid
+  item     InventoryItem @relation(fields: [itemId], references: [id])
+  storeId  String        @db.Uuid
+  store    Store         @relation(fields: [storeId], references: [id])
+
+  kind     StockMoveKind
+  /// Always positive. `kind` says which way it moved; an adjustment may be
+  /// negative to write stock off.
+  quantity Int
+
+  supplierName   String?
+  unitCostMinor  Int?
+  /// Who the stock was issued to, when it left the store.
+  issuedToUserId String? @db.Uuid
+  issuedToName   String?
+
+  note        String?
+  movedAt     DateTime @default(now())
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, itemId, storeId])
+  @@index([tenantId, movedAt])
 }
 
 // ---------------------------------------------------------------------------

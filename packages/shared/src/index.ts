@@ -12,6 +12,8 @@ export * from './billing.js';
 export * from './orders.js';
 export * from './diagnostics.js';
 export * from './pharmacy.js';
+export * from './finance.js';
+export * from './inventory.js';
 export * from './prescription.js';
 export * from './ward.js';
 export * from './admission.js';

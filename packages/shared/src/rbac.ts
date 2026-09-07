@@ -113,6 +113,14 @@ export const PERMISSIONS = [
   'admission:discharge',
   'nursenote:read',
   'nursenote:write',
+  // finance ledgers and referrals
+  'finance:read',
+  'finance:manage',
+  'referral:read',
+  'referral:manage',
+  // general inventory (pharmacy stock is separate)
+  'inventory:read',
+  'inventory:manage',
   // audit
   'audit:read',
 ] as const;
@@ -141,6 +149,9 @@ const READ_ONLY_SET: Permission[] = [
   'stock:read',
   'dispense:read',
   'allergy:read',
+  'finance:read',
+  'referral:read',
+  'inventory:read',
 ];
 
 /**
@@ -265,6 +276,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'order:read',
     'stock:read',
     'dispense:read',
+    'finance:read',
+    'finance:manage',
+    'referral:read',
+    'referral:manage',
+    'inventory:read',
     'ward:read',
     'admission:read',
     'payment:create',
