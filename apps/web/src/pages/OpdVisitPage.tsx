@@ -2,29 +2,35 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  ALLERGY_SEVERITY_LABELS,
   BILL_ITEM_STATUS_LABELS,
   FREQUENCY_SUGGESTIONS,
   OPD_STATUS_LABELS,
   SERVICE_ORDER_STATUS_LABELS,
   VISIT_STAGE_LABELS,
   adjustBillItemSchema,
+  allergySeveritySchema,
   computeBillLine,
+  createPatientAllergySchema,
   createServiceOrdersSchema,
   flagFor,
   formatBps,
   formatMoney,
+  matchAllergy,
   percentToBps,
   recordVitalsSchema,
   setPrescriptionSchema,
   toMajor,
   toMinor,
   updateOpdVisitSchema,
+  type AllergySeverity,
   type BillItem,
   type CaseLedger,
   type DiagnosticReport,
   type OpdVisit,
   type OpdVisitStatus,
   type Patient,
+  type PatientAllergy,
   type PatientHistoryAlert,
   type PrescriptionItem,
   type Practitioner,
@@ -39,8 +45,10 @@ import { api } from '../lib/api';
 import { useCan } from '../lib/permissions';
 import { num } from '../lib/bill-line';
 import { blankToUndefined, formatDate, formatDateTime, fullName } from '../lib/format';
+import { AllergyList } from '../components/AllergyList';
 import { DiagnosisEditor, type DiagnosisDraft } from '../components/DiagnosisEditor';
 import { ErrorNote, Loading } from '../components/QueryFeedback';
+import { MedicinePicker } from '../components/MedicinePicker';
 import { PatientHeader } from '../components/PatientHeader';
 import { ServicePicker } from '../components/ServicePicker';
 import { StatusBadge } from '../components/StatusBadge';
@@ -260,6 +268,11 @@ export function OpdVisitPage() {
         showAllergyBanner={false}
       />
 
+      <AllergiesPanel
+        patientId={v.patient.id}
+        canWrite={can('allergy:write')}
+      />
+
       <div className="card">
         <div className="section">
           <h2>Visit</h2>
@@ -325,6 +338,15 @@ export function OpdVisitPage() {
               >
                 <button type="button" className="secondary">
                   Admit to ward
+                </button>
+              </Link>
+            )}
+            {can('dispense:read') && (
+              <Link
+                to={`/pharmacy/dispense?patientId=${v.patient.id}&opdVisitId=${v.id}`}
+              >
+                <button type="button" className="secondary">
+                  Dispense at pharmacy
                 </button>
               </Link>
             )}
@@ -518,7 +540,11 @@ export function OpdVisitPage() {
 
       <ChargesPanel visitId={v.id} caseId={v.caseId} />
 
-      <PrescriptionPanel visitId={v.id} canWrite={canPrescribe} />
+      <PrescriptionPanel
+        visitId={v.id}
+        patientId={v.patient.id}
+        canWrite={canPrescribe}
+      />
 
       <OrdersPanel
         visitId={v.id}
@@ -826,12 +852,26 @@ function ReduceFeeForm({
 // Prescription
 // ---------------------------------------------------------------------------
 
+/**
+ * The medicine-master record a row is linked to. Carries the id so the link is
+ * persisted with the prescription, and the keywords so the allergy match can run
+ * without another request.
+ */
+type RxMedicine = {
+  id: string;
+  name: string;
+  genericName?: string | null;
+  allergenKeywords: string[];
+};
+
 interface PrescriptionRow {
   drugName: string;
   dose: string;
   frequency: string;
   durationDays: string;
   instructions: string;
+  /** Set when the doctor links this line to the medicine master; free text is still allowed. */
+  medicine: RxMedicine | null;
 }
 
 const EMPTY_RX_ROW: PrescriptionRow = {
@@ -840,6 +880,7 @@ const EMPTY_RX_ROW: PrescriptionRow = {
   frequency: '',
   durationDays: '',
   instructions: '',
+  medicine: null,
 };
 
 function toRxRow(item: PrescriptionItem): PrescriptionRow {
@@ -849,6 +890,15 @@ function toRxRow(item: PrescriptionItem): PrescriptionRow {
     frequency: item.frequency ?? '',
     durationDays: item.durationDays != null ? String(item.durationDays) : '',
     instructions: item.instructions ?? '',
+    // Rehydrate the saved link, otherwise the allergy warning would only ever
+    // appear while the doctor was typing and vanish when the visit reopened.
+    medicine: item.medicineId
+      ? {
+          id: item.medicineId,
+          name: item.medicineName ?? item.drugName,
+          allergenKeywords: item.allergenKeywords,
+        }
+      : null,
   };
 }
 
@@ -856,14 +906,29 @@ const FREQ_LIST_ID = 'rx-frequency-suggestions';
 
 function PrescriptionPanel({
   visitId,
+  patientId,
   canWrite,
 }: {
   visitId: string;
+  patientId: string;
   canWrite: boolean;
 }) {
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<PrescriptionRow[]>([EMPTY_RX_ROW]);
   const [issue, setIssue] = useState<string | null>(null);
+
+  // Same key (and cache entry) as the allergies panel above — the match runs
+  // locally so the warning is instant and does not need the server.
+  const allergies = useQuery({
+    queryKey: ['patient', 'allergies', patientId],
+    queryFn: async () => {
+      const { data } = await api.get<PatientAllergy[]>(
+        `/patients/${patientId}/allergies`,
+      );
+      return data;
+    },
+    enabled: Boolean(patientId),
+  });
 
   const rx = useQuery({
     // PrescriptionItem[] for this visit — its own shape, its own key.
@@ -885,6 +950,9 @@ function PrescriptionPanel({
       const items = rows
         .filter((r) => r.drugName.trim())
         .map((r) => ({
+          // Persisted, not just held in row state — without it the allergy
+          // warning would vanish the moment the visit is reopened.
+          medicineId: r.medicine?.id ?? null,
           drugName: r.drugName.trim(),
           dose: blankToUndefined(r.dose),
           frequency: blankToUndefined(r.frequency),
@@ -953,15 +1021,62 @@ function PrescriptionPanel({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
+                {rows.map((r, i) => {
+                  const allergyHits = r.medicine
+                    ? (allergies.data ?? [])
+                        .filter((a) => matchAllergy(r.medicine as RxMedicine, a.substance))
+                        .map((a) => a.substance)
+                    : [];
+                  return (
                   <tr key={i}>
                     <td>
                       <input
                         aria-label={`Drug ${i + 1}`}
                         value={r.drugName}
                         disabled={!canWrite}
-                        onChange={(e) => setRow(i, { drugName: e.target.value })}
+                        onChange={(e) =>
+                          setRow(i, { drugName: e.target.value })
+                        }
                       />
+                      {canWrite && (
+                        <div className="no-print" style={{ marginTop: 4 }}>
+                          {r.medicine ? (
+                            <span className="hint">
+                              Linked to master: {r.medicine.name}{' '}
+                              <button
+                                type="button"
+                                className="link"
+                                onClick={() => setRow(i, { medicine: null })}
+                              >
+                                unlink
+                              </button>
+                            </span>
+                          ) : (
+                            <MedicinePicker
+                              label={undefined}
+                              placeholder="Link to the medicine master (optional)"
+                              keepQueryOnSelect
+                              onSelect={(m) =>
+                                setRow(i, {
+                                  drugName: m.name,
+                                  medicine: {
+                                    id: m.id,
+                                    name: m.name,
+                                    genericName: m.genericName,
+                                    allergenKeywords: m.allergenKeywords,
+                                  },
+                                })
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                      {allergyHits.length > 0 && (
+                        <div className="rx-allergy-warn" role="alert">
+                          <strong>Allergy warning</strong> — patient reacts to{' '}
+                          {allergyHits.join(', ')}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <input
@@ -1014,7 +1129,8 @@ function PrescriptionPanel({
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1606,6 +1722,163 @@ function HistoryAlertModal({
             Dismiss
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Patient allergies — the structured list prescribing is checked against
+// ---------------------------------------------------------------------------
+
+const ALLERGY_SEVERITIES = allergySeveritySchema.options;
+
+function AllergiesPanel({
+  patientId,
+  canWrite,
+}: {
+  patientId: string;
+  canWrite: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [substance, setSubstance] = useState('');
+  const [reaction, setReaction] = useState('');
+  const [severity, setSeverity] = useState<'' | AllergySeverity>('');
+  const [issue, setIssue] = useState<string | null>(null);
+
+  const allergies = useQuery({
+    queryKey: ['patient', 'allergies', patientId],
+    queryFn: async () => {
+      const { data } = await api.get<PatientAllergy[]>(
+        `/patients/${patientId}/allergies`,
+      );
+      return data;
+    },
+    enabled: Boolean(patientId),
+  });
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ['patient', 'allergies', patientId] });
+
+  const add = useMutation({
+    mutationFn: async () => {
+      const parsed = createPatientAllergySchema.safeParse({
+        substance: substance.trim(),
+        reaction: blankToUndefined(reaction),
+        severity: severity || undefined,
+      });
+      if (!parsed.success) {
+        throw new Error(
+          parsed.error.issues[0]?.message ?? 'Check the allergy fields.',
+        );
+      }
+      const { data } = await api.post<PatientAllergy>(
+        `/patients/${patientId}/allergies`,
+        parsed.data,
+      );
+      return data;
+    },
+    onSuccess: async () => {
+      setSubstance('');
+      setReaction('');
+      setSeverity('');
+      setIssue(null);
+      await invalidate();
+    },
+    onError: (err) =>
+      setIssue(err instanceof Error ? err.message : 'Could not add the allergy'),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (allergyId: string) => {
+      await api.delete(`/patients/${patientId}/allergies/${allergyId}`);
+    },
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="card">
+      <div className="section">
+        <h2>Recorded allergies</h2>
+        <span className="hint">
+          This is the structured list the software checks every prescribed or
+          dispensed medicine against. The free-text “Known allergies” note below
+          is only the doctor’s own words and is never matched automatically.
+        </span>
+
+        <ErrorNote error={allergies.error} fallback="Could not load allergies" />
+        {allergies.isPending && <Loading label="Loading allergies…" />}
+        {allergies.data && allergies.data.length === 0 && (
+          <p className="muted">No allergies recorded.</p>
+        )}
+        {allergies.data && allergies.data.length > 0 && (
+          <AllergyList
+            allergies={allergies.data}
+            onDelete={canWrite ? (id) => remove.mutate(id) : undefined}
+            deletingId={remove.isPending ? remove.variables : null}
+          />
+        )}
+        <ErrorNote error={remove.error} fallback="Could not remove the allergy" />
+
+        {canWrite && (
+          <>
+            {issue && (
+              <div className="alert" role="alert" style={{ marginTop: 12 }}>
+                {issue}
+              </div>
+            )}
+            <div className="form-grid-3" style={{ marginTop: 12 }}>
+              <div className="field">
+                <label htmlFor="allergy-substance">Substance</label>
+                <input
+                  id="allergy-substance"
+                  value={substance}
+                  onChange={(e) => setSubstance(e.target.value)}
+                  placeholder="e.g. penicillin"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="allergy-reaction">
+                  Reaction <span className="muted">(optional)</span>
+                </label>
+                <input
+                  id="allergy-reaction"
+                  value={reaction}
+                  onChange={(e) => setReaction(e.target.value)}
+                  placeholder="e.g. hives, anaphylaxis"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="allergy-severity">
+                  Severity <span className="muted">(optional)</span>
+                </label>
+                <select
+                  id="allergy-severity"
+                  value={severity}
+                  onChange={(e) =>
+                    setSeverity(e.target.value as '' | AllergySeverity)
+                  }
+                >
+                  <option value="">—</option>
+                  {ALLERGY_SEVERITIES.map((s) => (
+                    <option key={s} value={s}>
+                      {ALLERGY_SEVERITY_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="row no-print">
+              <button
+                type="button"
+                disabled={add.isPending || substance.trim().length < 2}
+                onClick={() => add.mutate()}
+              >
+                {add.isPending ? 'Adding…' : 'Add allergy'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

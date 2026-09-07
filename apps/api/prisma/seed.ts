@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   await seedVitalTypes(tenantId);
   await seedDiagnostics(tenantId);
   await seedWardsAndBeds(tenantId);
+  await seedPharmacy(tenantId);
 
   console.log('\nSeed complete.');
   console.log('  Tenant:   %s (%s)', DEMO.tenantName, tenantId);
@@ -575,6 +576,191 @@ async function seedWardsAndBeds(tenantId: string): Promise<void> {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacy — medicine master, one opening batch per medicine, and one batch
+// deliberately close to expiry so the expiring-stock report has something to
+// show. The `allergenKeywords` are chosen so the prescribing allergy check is
+// demonstrable: a "penicillin" allergy collides with Amoxicillin and Augmentin.
+// ---------------------------------------------------------------------------
+
+interface SeedMedicine {
+  name: string;
+  category: string;
+  genericName: string;
+  strength: string;
+  unit: string;
+  allergenKeywords: string[];
+  purchasePriceMinor: number;
+  salePriceMinor: number;
+}
+
+async function seedPharmacy(tenantId: string): Promise<void> {
+  const categoryNames = [
+    'Tablet',
+    'Capsule',
+    'Syrup',
+    'Injection',
+    'Ointment',
+    'Drops',
+  ];
+  const categoryByName = new Map<string, string>();
+  for (const name of categoryNames) {
+    const found =
+      (await prisma.medicineCategory.findFirst({
+        where: { tenantId, name },
+      })) ??
+      (await prisma.medicineCategory.create({ data: { tenantId, name } }));
+    categoryByName.set(name, found.id);
+  }
+
+  const medicines: SeedMedicine[] = [
+    {
+      name: 'Amoxicillin 500mg',
+      category: 'Capsule',
+      genericName: 'Amoxicillin',
+      strength: '500mg',
+      unit: 'capsule',
+      allergenKeywords: ['penicillin', 'amoxicillin'],
+      purchasePriceMinor: 800,
+      salePriceMinor: 1200,
+    },
+    {
+      name: 'Augmentin 625mg',
+      category: 'Tablet',
+      genericName: 'Amoxicillin + Clavulanic acid',
+      strength: '625mg',
+      unit: 'tablet',
+      allergenKeywords: ['penicillin', 'amoxicillin', 'clavulanic acid'],
+      purchasePriceMinor: 3500,
+      salePriceMinor: 4800,
+    },
+    {
+      name: 'Paracetamol 500mg',
+      category: 'Tablet',
+      genericName: 'Paracetamol',
+      strength: '500mg',
+      unit: 'tablet',
+      allergenKeywords: [],
+      purchasePriceMinor: 150,
+      salePriceMinor: 300,
+    },
+    {
+      name: 'Ibuprofen 400mg',
+      category: 'Tablet',
+      genericName: 'Ibuprofen',
+      strength: '400mg',
+      unit: 'tablet',
+      allergenKeywords: ['nsaid', 'ibuprofen'],
+      purchasePriceMinor: 400,
+      salePriceMinor: 700,
+    },
+    {
+      name: 'Ceftriaxone 1g',
+      category: 'Injection',
+      genericName: 'Ceftriaxone',
+      strength: '1g',
+      unit: 'vial',
+      allergenKeywords: ['cephalosporin'],
+      purchasePriceMinor: 9000,
+      salePriceMinor: 13000,
+    },
+    {
+      name: 'Omeprazole 20mg',
+      category: 'Capsule',
+      genericName: 'Omeprazole',
+      strength: '20mg',
+      unit: 'capsule',
+      allergenKeywords: [],
+      purchasePriceMinor: 500,
+      salePriceMinor: 900,
+    },
+    {
+      name: 'Cetirizine 10mg',
+      category: 'Tablet',
+      genericName: 'Cetirizine',
+      strength: '10mg',
+      unit: 'tablet',
+      allergenKeywords: [],
+      purchasePriceMinor: 250,
+      salePriceMinor: 500,
+    },
+    {
+      name: 'Metformin 500mg',
+      category: 'Tablet',
+      genericName: 'Metformin',
+      strength: '500mg',
+      unit: 'tablet',
+      allergenKeywords: [],
+      purchasePriceMinor: 300,
+      salePriceMinor: 600,
+    },
+  ];
+
+  const now = new Date();
+  const longExpiry = new Date(now);
+  longExpiry.setMonth(longExpiry.getMonth() + 18);
+  const soonExpiry = new Date(now);
+  soonExpiry.setDate(soonExpiry.getDate() + 20);
+
+  for (const m of medicines) {
+    const categoryId = categoryByName.get(m.category)!;
+    let medicine = await prisma.medicine.findFirst({
+      where: { tenantId, name: m.name, strength: m.strength },
+    });
+    medicine ??= await prisma.medicine.create({
+      data: {
+        tenantId,
+        name: m.name,
+        genericName: m.genericName,
+        categoryId,
+        strength: m.strength,
+        unit: m.unit,
+        reorderLevel: 50,
+        allergenKeywords: m.allergenKeywords,
+      },
+    });
+
+    await ensureBatch(tenantId, medicine.id, {
+      batchNo: 'B-2026-01',
+      expiryDate: longExpiry,
+      quantity: 200,
+      purchasePriceMinor: m.purchasePriceMinor,
+      salePriceMinor: m.salePriceMinor,
+    });
+
+    // A second, nearly-expired batch on Paracetamol for the expiry report.
+    if (m.name === 'Paracetamol 500mg') {
+      await ensureBatch(tenantId, medicine.id, {
+        batchNo: 'B-2025-12',
+        expiryDate: soonExpiry,
+        quantity: 40,
+        purchasePriceMinor: m.purchasePriceMinor,
+        salePriceMinor: m.salePriceMinor,
+      });
+    }
+  }
+}
+
+async function ensureBatch(
+  tenantId: string,
+  medicineId: string,
+  batch: {
+    batchNo: string;
+    expiryDate: Date;
+    quantity: number;
+    purchasePriceMinor: number;
+    salePriceMinor: number;
+  },
+): Promise<void> {
+  const found = await prisma.medicineBatch.findFirst({
+    where: { tenantId, medicineId, batchNo: batch.batchNo },
+  });
+  if (found) return;
+  await prisma.medicineBatch.create({
+    data: { tenantId, medicineId, ...batch },
+  });
 }
 
 main()

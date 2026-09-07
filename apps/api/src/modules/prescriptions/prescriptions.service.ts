@@ -1,10 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   PrescriptionItem as PrescriptionItemDto,
   SetPrescriptionInput,
 } from '@hms/shared';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { toPrescriptionItemDto } from './prescriptions.mapper.js';
+import {
+  prescriptionItemInclude,
+  toPrescriptionItemDto,
+} from './prescriptions.mapper.js';
 
 @Injectable()
 export class PrescriptionsService {
@@ -16,6 +23,7 @@ export class PrescriptionsService {
   ): Promise<PrescriptionItemDto[]> {
     await this.assertVisit(tenantId, opdVisitId);
     const rows = await this.prisma.prescriptionItem.findMany({
+      include: prescriptionItemInclude,
       where: { tenantId, opdVisitId },
       orderBy: { sortOrder: 'asc' },
     });
@@ -35,6 +43,24 @@ export class PrescriptionsService {
   ): Promise<PrescriptionItemDto[]> {
     await this.assertVisit(tenantId, opdVisitId);
 
+    // A medicine id from another tenant would silently attach someone else's
+    // record to this prescription, so check them before writing anything.
+    const medicineIds = [
+      ...new Set(
+        input.items
+          .map((i) => i.medicineId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    if (medicineIds.length > 0) {
+      const found = await this.prisma.medicine.count({
+        where: { tenantId, id: { in: medicineIds } },
+      });
+      if (found !== medicineIds.length) {
+        throw new BadRequestException('Unknown medicine');
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.prescriptionItem.deleteMany({ where: { tenantId, opdVisitId } });
       if (input.items.length > 0) {
@@ -42,6 +68,7 @@ export class PrescriptionsService {
           data: input.items.map((item, index) => ({
             tenantId,
             opdVisitId,
+            medicineId: item.medicineId ?? null,
             drugName: item.drugName,
             dose: item.dose ?? null,
             frequency: item.frequency ?? null,

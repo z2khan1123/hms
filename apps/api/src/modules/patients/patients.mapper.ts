@@ -1,7 +1,8 @@
-import type { Prisma } from '@prisma/client';
+import type { PatientAllergy, Prisma } from '@prisma/client';
 import type {
   Address,
   Patient as PatientDto,
+  PatientAllergy as PatientAllergyDto,
   PatientSummary,
 } from '@hms/shared';
 import { toIsoDate } from '../../common/util/dates.js';
@@ -42,6 +43,21 @@ export function toPatientDto(p: PatientDetailRow): PatientDto {
     status: p.status,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * A patient's allergy as a structured record — the rows the prescribing and
+ * dispensing allergy check reasons over.
+ */
+export function toPatientAllergyDto(a: PatientAllergy): PatientAllergyDto {
+  return {
+    id: a.id,
+    substance: a.substance,
+    reaction: a.reaction,
+    severity: a.severity,
+    recordedAt: a.recordedAt.toISOString(),
+    recordedBy: a.recordedById,
   };
 }
 

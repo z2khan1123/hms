@@ -3,10 +3,17 @@ import { isoDateTimeSchema } from './common.js';
 
 /**
  * One line of a prescription; the "prescription" is every line on a visit.
- * Free text until the medicine master arrives with the pharmacy module — at
- * which point `drugName` gains an optional link to it without reshaping this.
+ * The drug may be typed freely or linked to the medicine master; linking it is
+ * what lets the allergy check run against the patient's recorded allergies.
  */
 export const prescriptionItemInputSchema = z.object({
+  /**
+   * Optional link to the medicine master. Free text still works — but WITHOUT
+   * this the allergy warning only lives as long as the doctor is typing, and
+   * reopening the visit loses it. Persisting the link is what makes the check
+   * survive.
+   */
+  medicineId: z.string().uuid().nullish(),
   drugName: z.string().trim().min(1).max(200),
   dose: z.string().trim().max(80).optional(),
   frequency: z.string().trim().max(80).optional(),
@@ -23,6 +30,10 @@ export type SetPrescriptionInput = z.infer<typeof setPrescriptionSchema>;
 
 export const prescriptionItemSchema = prescriptionItemInputSchema.extend({
   id: z.string().uuid(),
+  medicineId: z.string().uuid().nullable(),
+  /** Denormalised so the prescription renders without a second request. */
+  medicineName: z.string().nullable(),
+  allergenKeywords: z.array(z.string()),
   dose: z.string().nullable(),
   frequency: z.string().nullable(),
   durationDays: z.number().int().nullable(),

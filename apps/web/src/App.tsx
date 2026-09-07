@@ -25,6 +25,9 @@ import { AdmissionsPage } from './pages/AdmissionsPage';
 import { AdmitPage } from './pages/AdmitPage';
 import { AdmissionPage } from './pages/AdmissionPage';
 import { WardSetupPage } from './pages/WardSetupPage';
+import { MedicinesPage } from './pages/MedicinesPage';
+import { StockPage } from './pages/StockPage';
+import { DispensePage } from './pages/DispensePage';
 
 export default function App() {
   return (
@@ -54,6 +57,9 @@ export default function App() {
         <Route path="admissions/:id" element={<AdmissionPage />} />
         <Route path="billing/pending" element={<CashierPage />} />
         <Route path="worklist" element={<DepartmentWorklistPage />} />
+        <Route path="pharmacy/medicines" element={<MedicinesPage />} />
+        <Route path="pharmacy/stock" element={<StockPage />} />
+        <Route path="pharmacy/dispense" element={<DispensePage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

@@ -54,6 +54,16 @@ const ACT_WITHOUT_READ: ReadonlyArray<readonly [Permission, Permission]> = [
   ['vital:create', 'vital:read'],
   ['case:update', 'case:read'],
   ['case:close', 'case:read'],
+  // Pharmacy.
+  ['medicine:manage', 'medicine:read'],
+  ['stock:manage', 'stock:read'],
+  ['dispense:create', 'medicine:read'],
+  ['dispense:create', 'stock:read'],
+  ['dispense:create', 'dispense:read'],
+  // Nobody hands out medicine without sight of what the patient reacts to.
+  ['dispense:create', 'allergy:read'],
+  ['prescription:write', 'allergy:read'],
+  ['allergy:write', 'allergy:read'],
 ];
 
 describe('RBAC matrix', () => {

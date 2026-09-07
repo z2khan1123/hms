@@ -21,6 +21,23 @@ export function Layout() {
           {can('payment:create') && <NavLink to="/billing/pending">Billing</NavLink>}
           {can('order:update') && <NavLink to="/worklist">Worklist</NavLink>}
           {can('report:read') && <NavLink to="/reports">Reports</NavLink>}
+          {can('medicine:read') && (
+            <details className="nav-menu">
+              <summary>Pharmacy</summary>
+              <div
+                className="nav-menu-list"
+                onClick={(e) =>
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                }
+              >
+                <NavLink to="/pharmacy/medicines">Medicines</NavLink>
+                {can('stock:read') && <NavLink to="/pharmacy/stock">Stock</NavLink>}
+                {can('dispense:read') && (
+                  <NavLink to="/pharmacy/dispense">Dispense</NavLink>
+                )}
+              </div>
+            </details>
+          )}
           <details className="nav-menu">
             <summary>Setup</summary>
             <div

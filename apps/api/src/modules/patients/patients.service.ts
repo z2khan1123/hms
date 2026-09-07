@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpdVisitStatus, Prisma } from '@prisma/client';
 import {
+  type CreatePatientAllergyInput,
   type CreatePatientInput,
   type Paginated,
   type Patient as PatientDto,
+  type PatientAllergy as PatientAllergyDto,
   type PatientHistoryAlert,
   type UpdatePatientInput,
 } from '@hms/shared';
@@ -17,6 +23,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   patientDetailInclude,
+  toPatientAllergyDto,
   toPatientDto,
 } from './patients.mapper.js';
 
@@ -251,6 +258,78 @@ export class PatientsService {
       where: { id },
       data: { deletedAt: new Date(), status: 'inactive' },
     });
+  }
+
+  // --- allergies ---------------------------------------------------------
+  //
+  // Structured allergy records live with the patient: the doctor's own words
+  // stay in `knownAllergies`, while these rows are what prescribing and
+  // dispensing actually check a medicine against.
+
+  async listAllergies(
+    tenantId: string,
+    patientId: string,
+  ): Promise<PatientAllergyDto[]> {
+    await this.assertPatientExists(tenantId, patientId);
+    const rows = await this.prisma.patientAllergy.findMany({
+      where: { tenantId, patientId },
+      orderBy: { recordedAt: 'desc' },
+    });
+    return rows.map(toPatientAllergyDto);
+  }
+
+  async addAllergy(
+    tenantId: string,
+    recordedById: string,
+    patientId: string,
+    input: CreatePatientAllergyInput,
+  ): Promise<PatientAllergyDto> {
+    await this.assertPatientExists(tenantId, patientId);
+    const clash = await this.prisma.patientAllergy.findFirst({
+      where: { tenantId, patientId, substance: input.substance },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new ConflictException(
+        'That substance is already recorded for this patient',
+      );
+    }
+    const created = await this.prisma.patientAllergy.create({
+      data: {
+        tenantId,
+        patientId,
+        substance: input.substance,
+        reaction: input.reaction ?? null,
+        severity: input.severity,
+        recordedById,
+      },
+    });
+    return toPatientAllergyDto(created);
+  }
+
+  async removeAllergy(
+    tenantId: string,
+    patientId: string,
+    allergyId: string,
+  ): Promise<void> {
+    await this.assertPatientExists(tenantId, patientId);
+    const found = await this.prisma.patientAllergy.findFirst({
+      where: { id: allergyId, tenantId, patientId },
+      select: { id: true },
+    });
+    if (!found) throw new NotFoundException('Allergy not found');
+    await this.prisma.patientAllergy.delete({ where: { id: found.id } });
+  }
+
+  private async assertPatientExists(
+    tenantId: string,
+    id: string,
+  ): Promise<void> {
+    const found = await this.prisma.patient.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!found) throw new NotFoundException('Patient not found');
   }
 
   private hashNationalId(cnic: string): { hash: string; last4: string } {

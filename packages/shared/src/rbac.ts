@@ -79,6 +79,16 @@ export const PERMISSIONS = [
   'labtest:manage',
   'report:read',
   'report:write',
+  // pharmacy
+  'medicine:read',
+  'medicine:manage',
+  'stock:read',
+  'stock:manage',
+  'dispense:read',
+  'dispense:create',
+  /// A patient's recorded allergies — what prescribing actually checks against.
+  'allergy:read',
+  'allergy:write',
   // prescriptions
   'prescription:read',
   'prescription:write',
@@ -127,6 +137,10 @@ const READ_ONLY_SET: Permission[] = [
   'nursenote:read',
   'labtest:read',
   'report:read',
+  'medicine:read',
+  'stock:read',
+  'dispense:read',
+  'allergy:read',
 ];
 
 /**
@@ -169,6 +183,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'admission:read',
     'admission:transfer',
     'nursenote:read',
+    'allergy:read',
   ],
 
   doctor: [
@@ -196,6 +211,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // He ordered the test; he must be able to read what came back.
     'labtest:read',
     'report:read',
+    'medicine:read',
+    'dispense:read',
+    // He diagnoses the allergy, so he is the one who records it.
+    'allergy:read',
+    'allergy:write',
     'bill:discount',
     'prescription:read',
     'prescription:write',
@@ -226,6 +246,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'nursenote:read',
     'nursenote:write',
     'report:read',
+    'medicine:read',
+    'allergy:read',
+    'dispense:read',
   ],
 
   accountant: [
@@ -240,6 +263,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'bill:approve',
     'bill:discount',
     'order:read',
+    'stock:read',
+    'dispense:read',
     'ward:read',
     'admission:read',
     'payment:create',
@@ -262,6 +287,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   pharmacist: [
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'prescription:read',
+    'medicine:read', 'medicine:manage',
+    'stock:read', 'stock:manage',
+    'dispense:read', 'dispense:create',
+    // Dispensing without sight of the patient's allergies would be negligent.
+    'allergy:read',
+    'bill:read', 'bill:create',
   ],
 
   read_only: READ_ONLY_SET,

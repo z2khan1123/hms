@@ -391,3 +391,53 @@ tr.diag-abnormal > td { font-weight: 700; }
   tr.diag-abnormal > td { font-weight: 700; }
   .report-doc { font-size: 12px; }
 }
+
+/* ---------------------------------------------------------------- pharmacy */
+
+/*
+ * Stock and expiry states never rely on colour alone: each carries a word and a
+ * glyph, so "Low" and "Expired" are unmistakable on a monochrome screen or a
+ * black-and-white printout.
+ */
+.stock-tag {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+  border: 1px solid currentColor; border-radius: 999px; padding: 1px 8px;
+}
+.stock-tag::before { font-weight: 700; }
+.stock-low { color: var(--warn); }
+.stock-low::before { content: "\25BC"; } /* down triangle */
+.stock-expired { color: var(--danger); }
+.stock-expired::before { content: "\2715"; } /* cross */
+.stock-ok { color: var(--muted); font-weight: 400; border-color: var(--border); }
+
+tr.row-expired > td { color: var(--muted); }
+tr.row-low > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* severity badges for recorded allergies */
+.badge-severe { background: var(--danger-bg); color: var(--danger); }
+.badge-moderate { background: var(--warn-bg); color: var(--warn); }
+.badge-mild { background: #eef1f5; color: var(--muted); }
+
+/* inline, non-blocking allergy warning on a prescription row */
+.rx-allergy-warn {
+  display: block; margin-top: 6px; padding: 6px 8px;
+  border-left: 3px solid var(--danger); background: var(--danger-bg);
+  color: var(--danger); font-size: 12px; font-weight: 700;
+}
+.rx-allergy-warn::before { content: "\26A0"; margin-right: 5px; } /* warning sign */
+
+/* the allergies panel — structured list the software actually checks */
+.allergy-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.allergy-list li {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  border: 1px solid var(--danger-border); background: var(--danger-bg);
+  border-radius: 6px; padding: 8px 10px; font-size: 14px;
+}
+.allergy-list .allergy-substance { font-weight: 700; color: var(--danger); }
+.allergy-list .allergy-reaction { color: var(--text); }
+
+@media print {
+  .stock-low, .stock-expired { color: #000; }
+  .rx-allergy-warn { color: #000; border-left-color: #000; background: #fff; }
+}

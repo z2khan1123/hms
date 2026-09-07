@@ -25,6 +25,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { LabTestsModule } from './modules/lab-tests/lab-tests.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
+import { PharmacyModule } from './modules/pharmacy/pharmacy.module.js';
 import { WardsModule } from './modules/wards/wards.module.js';
 import { PatientsModule } from './modules/patients/patients.module.js';
 import { PractitionersModule } from './modules/practitioners/practitioners.module.js';
@@ -73,6 +74,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     VitalsModule,
     WardsModule,
     AdmissionsModule,
+    PharmacyModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -11,6 +11,8 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  type CreatePatientAllergyInput,
+  createPatientAllergySchema,
   type CreatePatientInput,
   createPatientSchema,
   paginationQuerySchema,
@@ -70,6 +72,40 @@ export class PatientsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.patients.historyAlert(requireTenant(user), id);
+  }
+
+  // --- allergies (structured records the prescribing check reads) --------
+
+  @Get(':id/allergies')
+  @Permissions('allergy:read')
+  @Audit('allergy.read')
+  listAllergies(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.patients.listAllergies(requireTenant(user), id);
+  }
+
+  @Post(':id/allergies')
+  @Permissions('allergy:write')
+  addAllergy(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(createPatientAllergySchema))
+    dto: CreatePatientAllergyInput,
+  ) {
+    return this.patients.addAllergy(requireTenant(user), user.id, id, dto);
+  }
+
+  @Delete(':id/allergies/:allergyId')
+  @Permissions('allergy:write')
+  @HttpCode(204)
+  async removeAllergy(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('allergyId', ParseUUIDPipe) allergyId: string,
+  ) {
+    await this.patients.removeAllergy(requireTenant(user), id, allergyId);
   }
 
   @Patch(':id')
