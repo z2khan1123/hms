@@ -19,3 +19,4 @@ export * from './prescription.js';
 export * from './ward.js';
 export * from './admission.js';
 export * from './vitals.js';
+export * from './analytics.js';

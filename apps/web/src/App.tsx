@@ -30,6 +30,7 @@ import { StockPage } from './pages/StockPage';
 import { DispensePage } from './pages/DispensePage';
 import { FinancePage } from './pages/FinancePage';
 import { ReferralsPage } from './pages/ReferralsPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { HrPage } from './pages/HrPage';
 import { InventoryPage } from './pages/InventoryPage';
 
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="finance/referrals" element={<ReferralsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="hr" element={<HrPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

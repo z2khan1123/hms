@@ -280,6 +280,7 @@ model Tenant {
   payrollRuns           PayrollRun[]
   payslips              Payslip[]
   payslipLines          PayslipLine[]
+  savedViews            SavedView[]
 }
 
 model User {
@@ -299,6 +300,7 @@ model User {
   refreshTokens RefreshToken[]
   practitioner  Practitioner?
   staffProfile  StaffProfile?
+  savedViews    SavedView[]
 
   @@unique([tenantId, email])
   @@index([email])
@@ -1917,4 +1919,32 @@ model AuditEvent {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, action])
+}
+
+/// A saved analytics query. The `query` is validated against the dataset
+/// registry every time it runs, never trusted because it was stored — a view
+/// saved before a field was retired must fail loudly, not silently query
+/// something else.
+model SavedView {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  description String?
+  /// Dataset id, denormalised so the list can be filtered without parsing JSON.
+  dataset     String
+  query       Json
+
+  /// Shared views are visible to anyone who can read the dataset.
+  isShared Boolean @default(false)
+
+  createdById String?  @db.Uuid
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, createdById, name])
+  @@index([tenantId, dataset])
+  @@index([tenantId, isShared])
 }

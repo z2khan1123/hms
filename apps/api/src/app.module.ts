@@ -21,6 +21,7 @@ import { BillingModule } from './modules/billing/billing.module.js';
 import { CasesModule } from './modules/cases/cases.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
 import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { HrModule } from './modules/hr/hr.module.js';
@@ -81,6 +82,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     FinanceModule,
     InventoryModule,
     HrModule,
+    AnalyticsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

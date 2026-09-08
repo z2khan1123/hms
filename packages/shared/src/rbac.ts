@@ -133,6 +133,12 @@ export const PERMISSIONS = [
   // general inventory (pharmacy stock is separate)
   'inventory:read',
   'inventory:manage',
+  // analytics — the saved-view layer that replaces hardcoded report pages.
+  // Reaching a dataset ALSO requires that dataset's own read permission, so
+  // this grants the screen, never the data behind it.
+  'analytics:read',
+  /// save a view for everyone, not just yourself
+  'analytics:share',
   // audit
   'audit:read',
 ] as const;
@@ -140,6 +146,7 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 const READ_ONLY_SET: Permission[] = [
+  'analytics:read',
   'patient:read',
   'case:read',
   'appointment:read',
@@ -180,6 +187,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   hospital_admin: PERMISSIONS.filter((p) => p !== 'tenant:manage'),
 
   receptionist: [
+    // The front desk takes money; it should be able to report on its own day.
+    // Which datasets that reaches is still decided per dataset.
+    'analytics:read',
     'patient:create',
     'patient:read',
     'patient:update',
@@ -219,6 +229,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
 
   doctor: [
+    'analytics:read',
     'patient:read',
     'patient:update',
     'case:read',
@@ -315,6 +326,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'referral:read',
     'referral:manage',
     'inventory:read',
+    'analytics:read',
+    'analytics:share',
     'ward:read',
     'admission:read',
     'payment:create',

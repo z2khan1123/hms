@@ -65,12 +65,12 @@ Each phase is ordered to end with something sellable, not with a half-finished l
 
 - [ ] Consolidated billing across all modules against the Case ID
 - [ ] TPA / insurance registry, negotiated charges, claims
-- [ ] Referral registry, commission rules, payouts
-- [ ] Income and expense ledgers with heads
-- [ ] HR: staff, departments, designations, specialities, attendance (incl. QR), duty roster,
-      leave, payroll, payslips
-- [ ] General inventory: items, categories, stores, suppliers, stock, issue
-- [ ] **Analytics layer** — saved views, scheduled delivery, export (replaces hardcoded reports)
+- [x] Referral registry, commission rules, payouts
+- [x] Income and expense ledgers with heads
+- [x] HR: staff, departments, designations, attendance, duty roster, leave, payroll, payslips
+- [x] General inventory: items, categories, stores, stock, issue
+- [x] **Analytics layer** — 14 datasets, saved views, CSV export (replaces hardcoded reports)
+      — scheduled delivery still to come
 
 ## Phase 5 — Ancillary services and platform (month 12+)
 
