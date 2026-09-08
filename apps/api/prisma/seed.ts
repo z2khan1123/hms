@@ -57,6 +57,15 @@ async function main(): Promise<void> {
   await seedPharmacy(tenantId);
   await seedFinance(tenantId);
   await seedInventory(tenantId);
+  // Phases 3-5. These modules were built but never seeded, so every one of
+  // their screens opened empty and the HR screens could not be used at all.
+  await seedHr(tenantId);
+  await seedBloodBank(tenantId);
+  await seedAmbulance(tenantId);
+  await seedFrontOffice(tenantId);
+  await seedRegisters(tenantId);
+  await seedAppointments(tenantId);
+  await seedFinanceEntries(tenantId);
 
   console.log('\nSeed complete.');
   console.log('  Tenant:   %s (%s)', DEMO.tenantName, tenantId);
@@ -924,6 +933,581 @@ async function seedInventory(tenantId: string): Promise<void> {
         },
       });
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Document numbers
+//
+// The application mints these through SequenceService, which bumps a counter on
+// `Tenant` and formats `<prefix>-<6 digits>`. The seed goes through the same
+// counters rather than writing literals like 'EMP-000001', so a number seeded
+// here can never later be minted a second time by the running app.
+// ---------------------------------------------------------------------------
+
+const SEQUENCES = {
+  staff: { seq: 'staffSeq', prefix: 'staffPrefix' },
+  donor: { seq: 'donorSeq', prefix: 'donorPrefix' },
+  call: { seq: 'callSeq', prefix: 'callPrefix' },
+  birth: { seq: 'birthSeq', prefix: 'birthPrefix' },
+  death: { seq: 'deathSeq', prefix: 'deathPrefix' },
+  visitor: { seq: 'visitorSeq', prefix: 'visitorPrefix' },
+  complaint: { seq: 'complaintSeq', prefix: 'complaintPrefix' },
+} as const;
+
+async function nextNo(
+  tenantId: string,
+  kind: keyof typeof SEQUENCES,
+): Promise<string> {
+  const counter = SEQUENCES[kind];
+  const tenant = await prisma.tenant.update({
+    where: { id: tenantId },
+    data: { [counter.seq]: { increment: 1 } } as Prisma.TenantUpdateInput,
+  });
+  const record = tenant as unknown as Record<string, string | number>;
+  return `${record[counter.prefix]}-${String(record[counter.seq]).padStart(6, '0')}`;
+}
+
+/** Midnight today, so seeded dates sit relative to whenever the seed is run. */
+function dayOffset(days: number): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function at(days: number, hour: number, minute = 0): Date {
+  const d = dayOffset(days);
+  d.setHours(hour, minute, 0, 0);
+  return d;
+}
+
+// ---------------------------------------------------------------------------
+// Human resources
+//
+// Every seeded user gets a staff record. Without one the HR module has nothing
+// to attach attendance, leave or payroll to, and its screens are not merely
+// empty but unusable — `/hr/leave/balance` cannot even be called without a
+// staff id to ask about.
+// ---------------------------------------------------------------------------
+
+async function seedHr(tenantId: string): Promise<void> {
+  const departmentByName = new Map<string, string>();
+  for (const name of [
+    'Administration',
+    'Outpatient',
+    'Inpatient',
+    'Laboratory',
+    'Radiology',
+    'Pharmacy',
+    'Accounts',
+  ]) {
+    const row =
+      (await prisma.department.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.department.create({ data: { tenantId, name } }));
+    departmentByName.set(name, row.id);
+  }
+
+  const designationByName = new Map<string, string>();
+  for (const name of [
+    'Hospital Administrator',
+    'Consultant',
+    'Medical Officer',
+    'Staff Nurse',
+    'Pharmacist',
+    'Lab Technologist',
+    'Radiographer',
+    'Accountant',
+    'Receptionist',
+  ]) {
+    const row =
+      (await prisma.designation.findFirst({ where: { tenantId, name } })) ??
+      (await prisma.designation.create({ data: { tenantId, name } }));
+    designationByName.set(name, row.id);
+  }
+
+  for (const s of [
+    { name: 'Morning', startTime: '08:00', endTime: '16:00' },
+    { name: 'Evening', startTime: '16:00', endTime: '00:00' },
+    { name: 'Night', startTime: '00:00', endTime: '08:00' },
+  ]) {
+    const found = await prisma.shift.findFirst({
+      where: { tenantId, name: s.name },
+    });
+    if (!found) await prisma.shift.create({ data: { tenantId, ...s } });
+  }
+
+  for (const l of [
+    { name: 'Annual', daysPerYear: 20, isPaid: true },
+    { name: 'Casual', daysPerYear: 10, isPaid: true },
+    { name: 'Sick', daysPerYear: 12, isPaid: true },
+    { name: 'Unpaid', daysPerYear: null, isPaid: false },
+  ]) {
+    const found = await prisma.leaveType.findFirst({
+      where: { tenantId, name: l.name },
+    });
+    if (!found) await prisma.leaveType.create({ data: { tenantId, ...l } });
+  }
+
+  // One staff record per user, keyed on userId (which is unique on the model).
+  const staffByEmail: Record<
+    string,
+    { department: string; designation: string; salary: number }
+  > = {
+    'admin@demo-hospital.test': {
+      department: 'Administration',
+      designation: 'Hospital Administrator',
+      salary: 25000000,
+    },
+    'doctor@demo-hospital.test': {
+      department: 'Outpatient',
+      designation: 'Consultant',
+      salary: 40000000,
+    },
+    'nurse@demo-hospital.test': {
+      department: 'Inpatient',
+      designation: 'Staff Nurse',
+      salary: 9000000,
+    },
+    'pharmacist@demo-hospital.test': {
+      department: 'Pharmacy',
+      designation: 'Pharmacist',
+      salary: 12000000,
+    },
+    'pathologist@demo-hospital.test': {
+      department: 'Laboratory',
+      designation: 'Lab Technologist',
+      salary: 15000000,
+    },
+    'radiologist@demo-hospital.test': {
+      department: 'Radiology',
+      designation: 'Radiographer',
+      salary: 15000000,
+    },
+    'accountant@demo-hospital.test': {
+      department: 'Accounts',
+      designation: 'Accountant',
+      salary: 14000000,
+    },
+    'receptionist@demo-hospital.test': {
+      department: 'Administration',
+      designation: 'Receptionist',
+      salary: 7000000,
+    },
+  };
+
+  const staffIds: string[] = [];
+  for (const [email, spec] of Object.entries(staffByEmail)) {
+    const user = await prisma.user.findFirst({ where: { tenantId, email } });
+    if (!user) continue;
+
+    const existing = await prisma.staffProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (existing) {
+      staffIds.push(existing.id);
+      continue;
+    }
+
+    const created = await prisma.staffProfile.create({
+      data: {
+        tenantId,
+        userId: user.id,
+        staffNo: await nextNo(tenantId, 'staff'),
+        departmentId: departmentByName.get(spec.department),
+        designationId: designationByName.get(spec.designation),
+        joinedOn: dayOffset(-400),
+        basicSalaryMinor: spec.salary,
+      },
+    });
+    staffIds.push(created.id);
+  }
+
+  // A fortnight of attendance, so the HR screens and the attendance percentage
+  // have something real to compute. Weekends are Saturday and Sunday here.
+  for (const staffId of staffIds) {
+    for (let back = 14; back >= 1; back--) {
+      const onDate = dayOffset(-back);
+      const weekday = onDate.getDay();
+      const status =
+        weekday === 0 || weekday === 6
+          ? 'holiday'
+          : back % 7 === 3
+            ? 'late'
+            : back % 11 === 5
+              ? 'on_leave'
+              : 'present';
+      const found = await prisma.staffAttendance.findFirst({
+        where: { tenantId, staffId, onDate },
+      });
+      if (found) continue;
+      await prisma.staffAttendance.create({
+        data: {
+          tenantId,
+          staffId,
+          onDate,
+          status,
+          checkIn: status === 'present' || status === 'late'
+            ? at(-back, status === 'late' ? 9 : 8, status === 'late' ? 40 : 5)
+            : null,
+          checkOut:
+            status === 'present' || status === 'late' ? at(-back, 16, 10) : null,
+        },
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Blood bank — donors across the groups, and stock with a deliberate spread:
+// available units, one already issued, one expiring soon and one expired, so
+// the derived status of a unit is visibly doing its job.
+// ---------------------------------------------------------------------------
+
+async function seedBloodBank(tenantId: string): Promise<void> {
+  if ((await prisma.donor.count({ where: { tenantId } })) > 0) return;
+
+  const donors: {
+    firstName: string;
+    lastName: string;
+    bloodGroup: 'A_POS' | 'B_POS' | 'O_POS' | 'O_NEG' | 'AB_POS' | 'A_NEG';
+    phone: string;
+  }[] = [
+    { firstName: 'Imran', lastName: 'Sheikh', bloodGroup: 'O_POS', phone: '+923001110001' },
+    { firstName: 'Hina', lastName: 'Baig', bloodGroup: 'A_POS', phone: '+923001110002' },
+    { firstName: 'Kashif', lastName: 'Raza', bloodGroup: 'B_POS', phone: '+923001110003' },
+    { firstName: 'Nadia', lastName: 'Aslam', bloodGroup: 'O_NEG', phone: '+923001110004' },
+    { firstName: 'Tariq', lastName: 'Mehmood', bloodGroup: 'AB_POS', phone: '+923001110005' },
+    { firstName: 'Rabia', lastName: 'Yousuf', bloodGroup: 'A_NEG', phone: '+923001110006' },
+  ];
+
+  const donorIds: { id: string; bloodGroup: string }[] = [];
+  for (const d of donors) {
+    const row = await prisma.donor.create({
+      data: {
+        tenantId,
+        donorNo: await nextNo(tenantId, 'donor'),
+        firstName: d.firstName,
+        lastName: d.lastName,
+        bloodGroup: d.bloodGroup,
+        phone: d.phone,
+      },
+    });
+    donorIds.push({ id: row.id, bloodGroup: d.bloodGroup });
+  }
+
+  // Whole blood keeps for 35 days; the dates below are chosen against that.
+  let bag = 1;
+  for (const donor of donorIds) {
+    for (const collectedDaysAgo of [5, 20]) {
+      await prisma.bloodUnit.create({
+        data: {
+          tenantId,
+          bagNo: `BAG-${String(bag++).padStart(5, '0')}`,
+          bloodGroup: donor.bloodGroup as never,
+          component: 'whole_blood',
+          donorId: donor.id,
+          collectedOn: dayOffset(-collectedDaysAgo),
+          expiresOn: dayOffset(35 - collectedDaysAgo),
+          volumeMl: 450,
+          screenedAt: at(-collectedDaysAgo + 1, 10),
+          screeningPassed: true,
+        },
+      });
+    }
+  }
+
+  // One expired and one already issued, so both derived states are represented.
+  await prisma.bloodUnit.create({
+    data: {
+      tenantId,
+      bagNo: `BAG-${String(bag++).padStart(5, '0')}`,
+      bloodGroup: 'O_POS',
+      component: 'packed_red_cells',
+      donorId: donorIds[0].id,
+      collectedOn: dayOffset(-50),
+      expiresOn: dayOffset(-15),
+      volumeMl: 300,
+      screenedAt: at(-49, 10),
+      screeningPassed: true,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ambulance
+// ---------------------------------------------------------------------------
+
+async function seedAmbulance(tenantId: string): Promise<void> {
+  const vehicles: {
+    registrationNo: string;
+    model: string;
+    type: 'basic' | 'advanced_life_support' | 'patient_transport';
+    driverName: string;
+    driverPhone: string;
+    baseChargeMinor: number;
+    perKmChargeMinor: number;
+  }[] = [
+    {
+      registrationNo: 'LEA-1234',
+      model: 'Toyota Hiace',
+      type: 'basic',
+      driverName: 'Shahid Iqbal',
+      driverPhone: '+923002220001',
+      baseChargeMinor: 150000,
+      perKmChargeMinor: 5000,
+    },
+    {
+      registrationNo: 'LEB-5678',
+      model: 'Ford Transit',
+      type: 'advanced_life_support',
+      driverName: 'Waqar Ali',
+      driverPhone: '+923002220002',
+      baseChargeMinor: 400000,
+      perKmChargeMinor: 9000,
+    },
+    {
+      registrationNo: 'LEC-9012',
+      model: 'Suzuki Bolan',
+      type: 'patient_transport',
+      driverName: 'Zubair Khan',
+      driverPhone: '+923002220003',
+      baseChargeMinor: 80000,
+      perKmChargeMinor: 3500,
+    },
+  ];
+  for (const v of vehicles) {
+    const found = await prisma.vehicle.findFirst({
+      where: { tenantId, registrationNo: v.registrationNo },
+    });
+    if (!found) await prisma.vehicle.create({ data: { tenantId, ...v } });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Front office — the visitor book, the call log and the complaint register.
+// Two visitors are left without a `leftAt` so the "still inside" list, which is
+// derived rather than stored, is not empty.
+// ---------------------------------------------------------------------------
+
+async function seedFrontOffice(tenantId: string): Promise<void> {
+  if ((await prisma.visitorLog.count({ where: { tenantId } })) > 0) return;
+
+  const visitors: {
+    name: string;
+    phone: string;
+    visitingWhom: string;
+    purpose: string;
+    arrivedAt: Date;
+    leftAt: Date | null;
+  }[] = [
+    {
+      name: 'Asif Nawaz',
+      phone: '+923003330001',
+      visitingWhom: 'Ward GF-9',
+      purpose: 'Family visit',
+      arrivedAt: at(0, 10, 15),
+      leftAt: null,
+    },
+    {
+      name: 'Saima Bibi',
+      phone: '+923003330002',
+      visitingWhom: 'Dr Ayesha Khan',
+      purpose: 'Medical representative',
+      arrivedAt: at(0, 11, 30),
+      leftAt: null,
+    },
+    {
+      name: 'Rashid Minhas',
+      phone: '+923003330003',
+      visitingWhom: 'Accounts',
+      purpose: 'Vendor payment',
+      arrivedAt: at(-1, 9, 0),
+      leftAt: at(-1, 9, 45),
+    },
+  ];
+  for (const v of visitors) {
+    await prisma.visitorLog.create({
+      data: { tenantId, passNo: await nextNo(tenantId, 'visitor'), ...v },
+    });
+  }
+
+  await prisma.phoneCallLog.createMany({
+    data: [
+      {
+        tenantId,
+        direction: 'incoming',
+        callerName: 'Gul Nawaz',
+        phone: '+923004440001',
+        purpose: 'Asking about OPD timings',
+        calledAt: at(0, 9, 20),
+        durationMinutes: 3,
+        outcome: 'Advised 8am to 2pm',
+      },
+      {
+        tenantId,
+        direction: 'outgoing',
+        callerName: 'Fatima Riaz',
+        phone: '+923004440002',
+        purpose: 'Report ready for collection',
+        calledAt: at(-1, 15, 10),
+        durationMinutes: 2,
+        outcome: 'Will collect tomorrow',
+      },
+    ],
+  });
+
+  await prisma.complaint.create({
+    data: {
+      tenantId,
+      reference: await nextNo(tenantId, 'complaint'),
+      complainantName: 'Nasir Abbas',
+      phone: '+923005550001',
+      about: 'Waiting time',
+      severity: 'medium',
+      description: 'Waited over two hours in OPD despite an appointment.',
+      status: 'open',
+      receivedAt: at(-2, 12, 0),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Statutory registers — the hospital issues the certificate; the family
+// registers it with the Union Council, which is recorded back as a
+// registration number. One of each is left unregistered on purpose.
+// ---------------------------------------------------------------------------
+
+async function seedRegisters(tenantId: string): Promise<void> {
+  if ((await prisma.birthRecord.count({ where: { tenantId } })) > 0) return;
+
+  const mother = await prisma.patient.findFirst({
+    where: { tenantId, gender: 'female' },
+  });
+  const attendedBy = await prisma.practitioner.findFirst({ where: { tenantId } });
+
+  await prisma.birthRecord.create({
+    data: {
+      tenantId,
+      certificateNo: await nextNo(tenantId, 'birth'),
+      childName: 'Baby of Fatima Riaz',
+      gender: 'female',
+      bornAt: at(-9, 4, 25),
+      birthWeightGrams: 3100,
+      deliveryType: 'normal',
+      motherPatientId: mother?.id,
+      motherName: mother ? `${mother.firstName} ${mother.lastName}` : 'Fatima Riaz',
+      fatherName: 'Riaz Ahmed',
+      contactPhone: '+923006660001',
+      attendedById: attendedBy?.id,
+    },
+  });
+
+  await prisma.birthRecord.create({
+    data: {
+      tenantId,
+      certificateNo: await nextNo(tenantId, 'birth'),
+      childName: 'Baby of Zainab Bibi',
+      gender: 'male',
+      bornAt: at(-30, 21, 10),
+      birthWeightGrams: 2850,
+      deliveryType: 'caesarean',
+      motherName: 'Zainab Bibi',
+      fatherName: 'Ghulam Farid',
+      contactPhone: '+923006660002',
+      attendedById: attendedBy?.id,
+      registrationNo: 'UC-LHR-2026-00841',
+      registeredOn: dayOffset(-18),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Appointments — a diary with something in it, spread across the practitioners
+// and across today and the coming days.
+// ---------------------------------------------------------------------------
+
+async function seedAppointments(tenantId: string): Promise<void> {
+  if ((await prisma.appointment.count({ where: { tenantId } })) > 0) return;
+
+  const patients = await prisma.patient.findMany({
+    where: { tenantId },
+    take: 4,
+    orderBy: { mrn: 'asc' },
+  });
+  const practitioners = await prisma.practitioner.findMany({
+    where: { tenantId },
+    orderBy: { firstName: 'asc' },
+  });
+  if (patients.length === 0 || practitioners.length === 0) return;
+
+  const slots: { day: number; hour: number; reason: string }[] = [
+    { day: 0, hour: 9, reason: 'Follow-up' },
+    { day: 0, hour: 11, reason: 'New complaint — chest pain' },
+    { day: 1, hour: 10, reason: 'Routine review' },
+    { day: 2, hour: 12, reason: 'Report discussion' },
+    { day: 3, hour: 9, reason: 'Vaccination' },
+  ];
+
+  for (const [i, slot] of slots.entries()) {
+    const startsAt = at(slot.day, slot.hour);
+    const endsAt = new Date(startsAt.getTime() + 20 * 60 * 1000);
+    await prisma.appointment.create({
+      data: {
+        tenantId,
+        patientId: patients[i % patients.length].id,
+        practitionerId: practitioners[i % practitioners.length].id,
+        startsAt,
+        endsAt,
+        reason: slot.reason,
+      },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Finance transactions. The heads and referrers were already seeded; without
+// entries against them the ledgers, the net position and every finance report
+// read as zero.
+// ---------------------------------------------------------------------------
+
+async function seedFinanceEntries(tenantId: string): Promise<void> {
+  if ((await prisma.income.count({ where: { tenantId } })) > 0) return;
+
+  const headId = async (name: string): Promise<string | null> =>
+    (await prisma.incomeHead.findFirst({ where: { tenantId, name } }))?.id ?? null;
+  const expenseHeadId = async (name: string): Promise<string | null> =>
+    (await prisma.expenseHead.findFirst({ where: { tenantId, name } }))?.id ?? null;
+
+  const incomes: [string, string, number, number][] = [
+    ['Consultation', 'OPD consultations — week total', 4850000, -3],
+    ['Pharmacy', 'Pharmacy counter sales', 6320000, -3],
+    ['Laboratory', 'Lab tests', 2140000, -2],
+    ['Radiology', 'X-ray and ultrasound', 1780000, -2],
+    ['Room rent', 'Ward charges', 3600000, -1],
+    ['Consultation', 'OPD consultations', 1250000, 0],
+  ];
+  for (const [head, description, amountMinor, day] of incomes) {
+    const id = await headId(head);
+    if (!id) continue;
+    await prisma.income.create({
+      data: { tenantId, headId: id, description, amountMinor, receivedAt: at(day, 17) },
+    });
+  }
+
+  const expenses: [string, string, number, number][] = [
+    ['Salaries', 'Staff salaries — last month', 118000000, -5],
+    ['Utilities', 'Electricity bill', 8450000, -4],
+    ['Medical supplies', 'Consumables restock', 6200000, -3],
+    ['Maintenance', 'Generator servicing', 1750000, -2],
+    ['Rent', 'Building rent', 45000000, -1],
+  ];
+  for (const [head, description, amountMinor, day] of expenses) {
+    const id = await expenseHeadId(head);
+    if (!id) continue;
+    await prisma.expense.create({
+      data: { tenantId, headId: id, description, amountMinor, paidAt: at(day, 12) },
+    });
   }
 }
 
