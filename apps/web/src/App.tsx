@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
+import { HomePage } from './pages/HomePage';
 import { PortalApp } from './portal/PortalApp';
 import { PortalAdminPage } from './pages/PortalAdminPage';
 import { CustomFieldsPage } from './pages/CustomFieldsPage';
@@ -59,7 +60,8 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/patients" replace />} />
+        <Route index element={<Navigate to="/home" replace />} />
+        <Route path="home" element={<HomePage />} />
         <Route path="patients" element={<PatientsPage />} />
         <Route path="patients/new" element={<PatientNewPage />} />
         <Route path="patients/:id" element={<PatientProfilePage />} />

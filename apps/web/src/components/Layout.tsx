@@ -15,9 +15,14 @@ export function Layout() {
       <header className="topbar">
         <span className="brand">HMS</span>
         <nav>
-          <NavLink to="/patients">Patients</NavLink>
-          <NavLink to="/appointments">Appointments</NavLink>
-          <NavLink to="/opd">OPD</NavLink>
+          {/* Gated like everything else. Offering a link the role cannot use
+              just moves the permission error one click later. */}
+          <NavLink to="/home">Home</NavLink>
+          {can('patient:read') && <NavLink to="/patients">Patients</NavLink>}
+          {can('appointment:read') && (
+            <NavLink to="/appointments">Appointments</NavLink>
+          )}
+          {can('opd:read') && <NavLink to="/opd">OPD</NavLink>}
           {can('opd:read') && <NavLink to="/queue">Queue</NavLink>}
           {can('ward:read') && <NavLink to="/beds">Beds</NavLink>}
           {can('admission:read') && <NavLink to="/admissions">Admissions</NavLink>}
@@ -87,6 +92,12 @@ export function Layout() {
               </div>
             </details>
           )}
+          {(can('service:read') ||
+            can('apikey:read') ||
+            can('portal:manage') ||
+            can('customfield:manage') ||
+            can('labtest:read') ||
+            can('ward:read')) && (
           <details className="nav-menu">
             <summary>Setup</summary>
             <div
@@ -95,18 +106,23 @@ export function Layout() {
                 e.currentTarget.closest('details')?.removeAttribute('open')
               }
             >
-              <NavLink to="/setup/services">Services</NavLink>
+              {can('service:read') && (
+                <NavLink to="/setup/services">Services</NavLink>
+              )}
               {can('apikey:read') && (
                 <NavLink to="/integration">Integration</NavLink>
               )}
               {can('portal:manage') && (
                 <NavLink to="/patient-portal">Patient portal</NavLink>
               )}
-              <NavLink to="/setup/custom-fields">Custom fields</NavLink>
+              {can('customfield:manage') && (
+                <NavLink to="/setup/custom-fields">Custom fields</NavLink>
+              )}
               {can('labtest:read') && <NavLink to="/setup/lab-tests">Lab tests</NavLink>}
               {can('ward:read') && <NavLink to="/setup/wards">Wards &amp; beds</NavLink>}
             </div>
           </details>
+          )}
         </nav>
         <div className="spacer" />
         <span className="user">
