@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 import { useCan } from '../lib/permissions';
+import { OutboxIndicator } from './OutboxIndicator';
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -9,6 +10,8 @@ export function Layout() {
 
   return (
     <div className="app">
+      {/* Appears only when there is something to know. */}
+      <OutboxIndicator />
       <header className="topbar">
         <span className="brand">HMS</span>
         <nav>
@@ -99,6 +102,7 @@ export function Layout() {
               {can('portal:manage') && (
                 <NavLink to="/patient-portal">Patient portal</NavLink>
               )}
+              <NavLink to="/setup/custom-fields">Custom fields</NavLink>
               {can('labtest:read') && <NavLink to="/setup/lab-tests">Lab tests</NavLink>}
               {can('ward:read') && <NavLink to="/setup/wards">Wards &amp; beds</NavLink>}
             </div>

@@ -90,8 +90,9 @@ Each phase is ordered to end with something sellable, not with a half-finished l
       bounded retry. See docs/integration.md
 - [x] **HL7 FHIR R4 façade** — read-only, 8 resource types, OperationOutcome errors.
       Writes stay on the REST API, where the clinical rules are
-- [ ] Offline-tolerant front desk (registration, billing, vitals queue and sync)
-- [ ] Custom-field builder
+- [x] Offline-tolerant front desk — IndexedDB outbox + server idempotency.
+      Registration wired; billing and vitals use the same outbox when wired
+- [x] Custom-field builder — 7 record types, 6 field types, one shared validator
 - [ ] Per-tenant database split path for large hospitals
 
 ## Explicitly out of scope

@@ -256,6 +256,25 @@ enum AppointmentRequestStatus {
   declined
 }
 
+enum CustomEntity {
+  patient
+  opd_visit
+  admission
+  appointment
+  staff
+  donor
+  ambulance_call
+}
+
+enum CustomFieldType {
+  text
+  textarea
+  number
+  date
+  boolean
+  select
+}
+
 enum VitalFlag {
   low
   normal
@@ -384,6 +403,9 @@ model Tenant {
   webhookDeliveries     WebhookDelivery[]
   patientAccounts       PatientAccount[]
   appointmentRequests   AppointmentRequest[]
+  customFieldDefinitions CustomFieldDefinition[]
+  customFieldValues     CustomFieldValue[]
+  idempotencyRecords    IdempotencyRecord[]
 }
 
 model User {
@@ -2631,4 +2653,104 @@ model AppointmentRequest {
 
   @@index([tenantId, status, preferredDate])
   @@index([tenantId, patientId])
+}
+
+// ---------------------------------------------------------------------------
+// User-defined fields
+// ---------------------------------------------------------------------------
+
+/// A field a hospital added for itself.
+///
+/// The `key` is immutable once created: it is what values are stored against,
+/// so renaming it would orphan every value already recorded. Retiring a field
+/// deactivates it and keeps its values — a record should still show what was
+/// true when it was written.
+model CustomFieldDefinition {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  entity CustomEntity
+  key    String
+  label  String
+  type   CustomFieldType
+
+  helpText String?
+  required Boolean  @default(false)
+  /// Only meaningful for `select`.
+  options  String[]
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  values CustomFieldValue[]
+
+  @@unique([tenantId, entity, key])
+  @@index([tenantId, entity, isActive])
+}
+
+/// One value, for one field, on one record.
+///
+/// A row rather than a key in a JSON blob on the entity: a blob cannot be
+/// indexed, joined or reported on, and the whole point of letting a hospital
+/// add a field is that they can then count it.
+model CustomFieldValue {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  definitionId String                @db.Uuid
+  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  entity   CustomEntity
+  /// The id of the patient, visit, admission and so on. Not a foreign key:
+  /// one table cannot reference seven others, and the entity says which.
+  entityId String       @db.Uuid
+
+  /// Held as text and cast on the way out. One column beats six mostly-null
+  /// ones, and the definition already says how to read it.
+  value String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([definitionId, entityId])
+  @@index([tenantId, entity, entityId])
+}
+
+/// What we already answered for a given idempotency key.
+///
+/// A request that timed out may or may not have been applied, and the desk
+/// pressing the button again must not create a second patient. The first
+/// response is stored and replayed verbatim, so a retry is indistinguishable
+/// from the original as far as the caller is concerned.
+///
+/// `requestHash` guards against the other mistake: the same key sent with a
+/// DIFFERENT body is a client bug, and answering it with the earlier response
+/// would silently discard whatever they meant to send.
+model IdempotencyRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  key         String
+  method      String
+  path        String
+  requestHash String
+
+  responseStatus Int
+  responseBody   Json
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  /// Old keys are swept; a desk does not retry a week-old registration.
+  expiresAt   DateTime
+
+  @@unique([tenantId, key])
+  @@index([expiresAt])
 }

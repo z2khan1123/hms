@@ -11,6 +11,7 @@ import {
   type Patient,
 } from '@hms/shared';
 import { api } from '../lib/api';
+import { CustomFields } from '../components/CustomFields';
 import { useCan } from '../lib/permissions';
 import { formatDate, formatDateTime, fullName } from '../lib/format';
 import { PatientHeader } from '../components/PatientHeader';
@@ -266,6 +267,9 @@ export function PatientProfilePage() {
           )}
         </>
       )}
+
+      {/* Renders nothing at all unless this hospital has defined fields. */}
+      {id && <CustomFields entity="patient" entityId={id} canEdit={can('patient:update')} />}
     </>
   );
 }

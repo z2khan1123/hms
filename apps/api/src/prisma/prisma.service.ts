@@ -27,6 +27,9 @@ const UNSCOPED_MODELS = new Set([
   'refreshToken',
   'icd10Code',
   'icd10Group',
+  // Written by an interceptor that runs before any tenant-scoped service, and
+  // read on a retry that may arrive on a different connection.
+  'idempotencyRecord',
 ]);
 
 const SET_TENANT = (tenantId: string) =>

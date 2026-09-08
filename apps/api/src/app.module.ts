@@ -4,9 +4,10 @@ import {
   type NestModule,
 } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { IdempotencyInterceptor } from './common/idempotency/idempotency.interceptor.js';
 import { validateEnv } from './config/env.schema.js';
 import { AuditModule } from './common/audit/audit.module.js';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard.js';
@@ -24,6 +25,7 @@ import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module.js';
 import { AmbulanceModule } from './modules/ambulance/ambulance.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { BloodBankModule } from './modules/bloodbank/bloodbank.module.js';
+import { CustomFieldsModule } from './modules/customfields/customfields.module.js';
 import { FhirModule } from './modules/fhir/fhir.module.js';
 import { FrontOfficeModule } from './modules/frontoffice/frontoffice.module.js';
 import { IntegrationModule } from './modules/integration/integration.module.js';
@@ -97,11 +99,15 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     IntegrationModule,
     FhirModule,
     PortalModule,
+    CustomFieldsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    // Runs on every write. Without an Idempotency-Key header it does nothing,
+    // so it costs callers that do not need it exactly nothing.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule implements NestModule {
