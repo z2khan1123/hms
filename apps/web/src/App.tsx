@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
+import { PortalApp } from './portal/PortalApp';
+import { PortalAdminPage } from './pages/PortalAdminPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { PatientNewPage } from './pages/PatientNewPage';
 import { PatientEditPage } from './pages/PatientEditPage';
@@ -43,6 +45,12 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/*
+        The patient portal is deliberately outside ProtectedRoute. It has its
+        own session, its own HTTP client and its own shell — a patient never
+        passes through the staff guard, and a staff session grants nothing here.
+      */}
+      <Route path="/portal/*" element={<PortalApp />} />
       <Route
         element={
           <ProtectedRoute>
@@ -80,6 +88,7 @@ export default function App() {
         <Route path="registers" element={<RegistersPage />} />
         <Route path="front-office" element={<FrontOfficePage />} />
         <Route path="integration" element={<IntegrationPage />} />
+        <Route path="patient-portal" element={<PortalAdminPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

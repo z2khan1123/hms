@@ -250,6 +250,12 @@ enum DeliveryStatus {
   abandoned
 }
 
+enum AppointmentRequestStatus {
+  pending
+  booked
+  declined
+}
+
 enum VitalFlag {
   low
   normal
@@ -376,6 +382,8 @@ model Tenant {
   apiKeys               ApiKey[]
   webhookEndpoints      WebhookEndpoint[]
   webhookDeliveries     WebhookDelivery[]
+  patientAccounts       PatientAccount[]
+  appointmentRequests   AppointmentRequest[]
 }
 
 model User {
@@ -488,6 +496,8 @@ model Patient {
   allergies         PatientAllergy[]
   bloodIssues       BloodIssue[]
   ambulanceCalls    AmbulanceCall[]
+  portalAccount      PatientAccount?
+  appointmentRequests AppointmentRequest[]
   birthsAsMother    BirthRecord[]  @relation("BirthMother")
   birthsAsChild     BirthRecord[]  @relation("BirthChild")
   deathRecord       DeathRecord?
@@ -520,6 +530,7 @@ model Practitioner {
   updatedAt DateTime @updatedAt
 
   appointments  Appointment[]
+  appointmentRequests AppointmentRequest[]
   opdVisits     OpdVisit[]
   admissions    Admission[]
   birthsAttended BirthRecord[]
@@ -546,6 +557,8 @@ model Appointment {
   updatedAt      DateTime          @updatedAt
 
   opdVisit OpdVisit?
+
+  portalRequest AppointmentRequest?
 
   @@index([tenantId, practitionerId, startsAt])
   @@index([tenantId, patientId, startsAt])
@@ -2542,4 +2555,80 @@ model WebhookDelivery {
   @@index([status, nextAttemptAt])
   @@index([tenantId, createdAt])
   @@index([tenantId, webhookId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Patient portal
+// ---------------------------------------------------------------------------
+
+/// A patient's own login.
+///
+/// Deliberately NOT a `User`. A patient given a staff role would be one
+/// mistaken grant away from reading somebody else's chart, and every future
+/// permission would have to be audited against "but what if a patient holds
+/// this". Separate table, separate token type, no permissions at all — the
+/// only authority a portal session carries is "you are this patient".
+model PatientAccount {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  patientId String  @unique @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  email String?
+  phone String?
+
+  /// Null until they set one from their invitation.
+  passwordHash String?
+
+  /// Hash of the one-time invitation code. The code itself is shown once, to
+  /// the person at the desk, and never stored.
+  inviteTokenHash String?
+  inviteExpiresAt DateTime?
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  /// Wrong-password counter, so a portal login cannot be brute-forced.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  invitedById String?  @db.Uuid
+  invitedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+}
+
+/// A patient asking for an appointment. The desk turns it into a real
+/// Appointment; the portal never writes into the diary itself, or anyone could
+/// fill a clinic overnight.
+model AppointmentRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  practitionerId String?       @db.Uuid
+  practitioner   Practitioner? @relation(fields: [practitionerId], references: [id])
+
+  preferredDate DateTime @db.Date
+  reason        String?
+
+  status      AppointmentRequestStatus @default(pending)
+  handledById String?                  @db.Uuid
+  handledAt   DateTime?
+  /// The appointment the desk created from this, once it did.
+  appointmentId String?      @unique @db.Uuid
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  declineReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status, preferredDate])
+  @@index([tenantId, patientId])
 }

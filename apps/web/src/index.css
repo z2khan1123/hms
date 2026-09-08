@@ -441,3 +441,32 @@ tr.row-low > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   .stock-low, .stock-expired { color: #000; }
   .rx-allergy-warn { color: #000; border-left-color: #000; background: #fff; }
 }
+
+/* --- patient portal ------------------------------------------------------
+   Its own shell. A patient never sees staff navigation, and the layout is
+   wider-spaced and larger-typed because the person reading it may be older,
+   anxious, or on a phone in a corridor. */
+.portal {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  font-size: 16px;
+}
+.portal-entry { max-width: 460px; }
+.portal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.portal-header strong { font-size: 18px; }
+.portal .tabs { margin-bottom: 16px; flex-wrap: wrap; }
+.portal .card { margin-bottom: 16px; }
+.portal table { font-size: 15px; }
+.portal label { display: block; margin-bottom: 12px; }
+.portal input,
+.portal textarea,
+.portal select { width: 100%; }

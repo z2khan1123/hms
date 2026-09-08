@@ -1,7 +1,7 @@
 import { Injectable, type NestMiddleware } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { jwtPayloadSchema } from '@hms/shared';
+import { PORTAL_TOKEN_TYPE, jwtPayloadSchema } from '@hms/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { ApiKeyService } from '../../modules/integration/apikey.service.js';
 import { runWithContext } from './tenant-context.js';
@@ -31,6 +31,12 @@ export class ContextMiddleware implements NestMiddleware {
         const raw = this.jwt.verify(header.slice(7), {
           secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
         });
+        // A portal token is signed with the same secret but carries `typ`.
+        // Refusing it here is what stops a patient session ever becoming a
+        // staff session: without this check the payload shape alone decides.
+        if ((raw as { typ?: string }).typ === PORTAL_TOKEN_TYPE) {
+          throw new Error('portal token presented to a staff route');
+        }
         const payload = jwtPayloadSchema.parse(raw);
         req.user = {
           id: payload.sub,

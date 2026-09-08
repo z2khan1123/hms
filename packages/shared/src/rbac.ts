@@ -166,6 +166,9 @@ export const PERMISSIONS = [
   'apikey:manage',
   'webhook:read',
   'webhook:manage',
+  /// invite a patient to the portal and disable their access. Staff-side only;
+  /// the portal itself has no permissions, only 'you are this patient'.
+  'portal:manage',
   // analytics — the saved-view layer that replaces hardcoded report pages.
   // Reaching a dataset ALSO requires that dataset's own read permission, so
   // this grants the screen, never the data behind it.
@@ -234,6 +237,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'vehicle:read',
     'call:read',
     'call:dispatch',
+    'portal:manage',
     'blood:read',
     'birth:read',
     'birth:manage',

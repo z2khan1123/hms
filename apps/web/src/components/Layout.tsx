@@ -96,6 +96,9 @@ export function Layout() {
               {can('apikey:read') && (
                 <NavLink to="/integration">Integration</NavLink>
               )}
+              {can('portal:manage') && (
+                <NavLink to="/patient-portal">Patient portal</NavLink>
+              )}
               {can('labtest:read') && <NavLink to="/setup/lab-tests">Lab tests</NavLink>}
               {can('ward:read') && <NavLink to="/setup/wards">Wards &amp; beds</NavLink>}
             </div>
