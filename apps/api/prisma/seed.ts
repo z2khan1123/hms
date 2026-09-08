@@ -63,9 +63,11 @@ async function main(): Promise<void> {
   console.log('  Login:    %s', DEMO.adminEmail);
   console.log('  Password: %s', DEMO.adminPassword);
   console.log(
-    '  Staff:    doctor@ / receptionist@ / accountant@ / nurse@ /',
+    '  Staff:    doctor@ / receptionist@ / accountant@ / nurse@ / pharmacist@ /',
   );
-  console.log('            pathologist@ / radiologist@demo-hospital.test');
+  console.log(
+    '            pathologist@ / radiologist@ / superadmin@demo-hospital.test',
+  );
   console.log('            all with password: %s', DEMO.staffPassword);
   console.log('  ^ change these before deploying anywhere real.\n');
 }
@@ -158,6 +160,25 @@ async function seedUsers(tenantId: string): Promise<void> {
     'Nadia',
     'Farooq',
     'radiologist',
+    DEMO.staffPassword,
+  );
+  await ensureUser(
+    tenantId,
+    'pharmacist@demo-hospital.test',
+    'Bilal',
+    'Ahmed',
+    'pharmacist',
+    DEMO.staffPassword,
+  );
+  // The platform operator, not hospital staff. It holds `tenant:manage` and
+  // `user:read` and nothing else — signing in as this role shows almost no
+  // clinical screens, which is correct rather than broken.
+  await ensureUser(
+    tenantId,
+    'superadmin@demo-hospital.test',
+    'Platform',
+    'Operator',
+    'platform_admin',
     DEMO.staffPassword,
   );
 }
