@@ -25,6 +25,11 @@ export const booleanQuery = z
     return t === 'true' || t === '1' || t === 'yes' || t === 'on';
   });
 
+/** The one filter every reference-data list needs. */
+export const includeInactiveQuerySchema = z.object({
+  includeInactive: booleanQuery.optional(),
+});
+
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),

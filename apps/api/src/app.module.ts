@@ -23,6 +23,7 @@ import { ServicesModule } from './modules/services/services.module.js';
 import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { HrModule } from './modules/hr/hr.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { LabTestsModule } from './modules/lab-tests/lab-tests.module.js';
 import { OpdModule } from './modules/opd/opd.module.js';
@@ -79,6 +80,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     PharmacyModule,
     FinanceModule,
     InventoryModule,
+    HrModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Tenant" ADD COLUMN     "staffPrefix" TEXT NOT NULL DEFAULT 'EMP',
+ADD COLUMN     "staffSeq" INTEGER NOT NULL DEFAULT 0;
+

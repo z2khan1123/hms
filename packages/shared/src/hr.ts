@@ -17,6 +17,11 @@ import { ROLES } from './rbac.js';
 export const createHrNamedSchema = z.object({
   name: z.string().trim().min(1).max(120),
 });
+export const updateHrNamedSchema = createHrNamedSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+export type UpdateHrNamedInput = z.infer<typeof updateHrNamedSchema>;
+
 export const hrNamedSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -46,6 +51,9 @@ export const createStaffSchema = z.object({
   basicSalaryMinor: z.number().int().min(0).optional(),
 });
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
+export type CreateHrNamedInput = z.infer<typeof createHrNamedSchema>;
+export type CreateLeaveTypeInput = z.infer<typeof createLeaveTypeSchema>;
+export type CreateShiftInput = z.infer<typeof createShiftSchema>;
 
 export const updateStaffSchema = createStaffSchema
   .omit({ email: true, password: true })
@@ -157,6 +165,11 @@ export const createLeaveTypeSchema = z.object({
   daysPerYear: z.number().int().min(0).max(365).nullish(),
   isPaid: z.boolean().optional(),
 });
+export const updateLeaveTypeSchema = createLeaveTypeSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+export type UpdateLeaveTypeInput = z.infer<typeof updateLeaveTypeSchema>;
+
 export const leaveTypeSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -200,6 +213,14 @@ export const decideLeaveSchema = z.object({
   status: z.enum(['approved', 'rejected']),
   decisionNote: z.string().trim().max(500).optional(),
 });
+export type DecideLeaveInput = z.infer<typeof decideLeaveSchema>;
+
+/** `GET /hr/leave/balance` — one person, one year. */
+export const leaveBalanceQuerySchema = z.object({
+  staffId: z.string().uuid(),
+  year: z.coerce.number().int().min(2000).max(2200),
+});
+export type LeaveBalanceQuery = z.infer<typeof leaveBalanceQuerySchema>;
 
 export const leaveRequestSchema = z.object({
   id: z.string().uuid(),
@@ -245,6 +266,11 @@ export const createShiftSchema = z.object({
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm'),
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm'),
 });
+export const updateShiftSchema = createShiftSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+export type UpdateShiftInput = z.infer<typeof updateShiftSchema>;
+
 export const shiftSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),

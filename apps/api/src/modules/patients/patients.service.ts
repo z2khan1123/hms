@@ -14,12 +14,12 @@ import {
   type PatientHistoryAlert,
   type UpdatePatientInput,
 } from '@hms/shared';
-import { createHash } from 'node:crypto';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
 import {
   parseIsoDate,
   toIsoDateTimeOrNull,
 } from '../../common/util/dates.js';
+import { hashNationalId } from '../../common/util/national-id.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   patientDetailInclude,
@@ -333,11 +333,9 @@ export class PatientsService {
   }
 
   private hashNationalId(cnic: string): { hash: string; last4: string } {
-    const digits = cnic.replace(/\D/g, '');
-    const salt = this.config.getOrThrow<string>('NATIONAL_ID_HASH_SALT');
-    return {
-      hash: createHash('sha256').update(`${salt}:${digits}`).digest('hex'),
-      last4: digits.slice(-4),
-    };
+    return hashNationalId(
+      cnic,
+      this.config.getOrThrow<string>('NATIONAL_ID_HASH_SALT'),
+    );
   }
 }

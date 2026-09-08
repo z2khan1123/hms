@@ -59,6 +59,7 @@ export function Layout() {
               </div>
             </details>
           )}
+          {can('staff:read') && <NavLink to="/hr">Staff</NavLink>}
           <details className="nav-menu">
             <summary>Setup</summary>
             <div

@@ -7,7 +7,13 @@ import { PrismaService } from '../../prisma/prisma.service.js';
  * with an atomic `increment` inside a transaction, so two concurrent front-desk
  * registrations can never be handed the same number.
  */
-export type SequenceKind = 'mrn' | 'case' | 'opd' | 'receipt' | 'admission';
+export type SequenceKind =
+  | 'mrn'
+  | 'case'
+  | 'opd'
+  | 'receipt'
+  | 'admission'
+  | 'staff';
 
 const COUNTERS = {
   mrn: { seq: 'mrnSeq', prefix: 'mrnPrefix' },
@@ -15,6 +21,7 @@ const COUNTERS = {
   opd: { seq: 'opdSeq', prefix: 'opdPrefix' },
   receipt: { seq: 'receiptSeq', prefix: 'receiptPrefix' },
   admission: { seq: 'admissionSeq', prefix: 'admissionPrefix' },
+  staff: { seq: 'staffSeq', prefix: 'staffPrefix' },
 } as const;
 
 const PAD_WIDTH = 6;

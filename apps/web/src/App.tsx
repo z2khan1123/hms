@@ -30,6 +30,7 @@ import { StockPage } from './pages/StockPage';
 import { DispensePage } from './pages/DispensePage';
 import { FinancePage } from './pages/FinancePage';
 import { ReferralsPage } from './pages/ReferralsPage';
+import { HrPage } from './pages/HrPage';
 import { InventoryPage } from './pages/InventoryPage';
 
 export default function App() {
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="finance" element={<FinancePage />} />
         <Route path="finance/referrals" element={<ReferralsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
+        <Route path="hr" element={<HrPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />
