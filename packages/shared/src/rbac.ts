@@ -133,6 +133,21 @@ export const PERMISSIONS = [
   // general inventory (pharmacy stock is separate)
   'inventory:read',
   'inventory:manage',
+  // blood bank
+  'donor:read',
+  'donor:manage',
+  'blood:read',
+  /// record a donation into stock
+  'blood:collect',
+  /// issue a bag to a patient — gated on the ABO compatibility check
+  'blood:issue',
+  /// take a bag out of stock without issuing it
+  'blood:discard',
+  // ambulance
+  'vehicle:read',
+  'vehicle:manage',
+  'call:read',
+  'call:dispatch',
   // analytics — the saved-view layer that replaces hardcoded report pages.
   // Reaching a dataset ALSO requires that dataset's own read permission, so
   // this grants the screen, never the data behind it.
@@ -147,6 +162,10 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 const READ_ONLY_SET: Permission[] = [
   'analytics:read',
+  'donor:read',
+  'blood:read',
+  'vehicle:read',
+  'call:read',
   'patient:read',
   'case:read',
   'appointment:read',
@@ -190,6 +209,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     // The front desk takes money; it should be able to report on its own day.
     // Which datasets that reaches is still decided per dataset.
     'analytics:read',
+    // Dispatch is a front-desk job — a caller is on the phone right now.
+    'vehicle:read',
+    'call:read',
+    'call:dispatch',
+    'blood:read',
     'patient:create',
     'patient:read',
     'patient:update',
@@ -230,6 +254,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
   doctor: [
     'analytics:read',
+    'blood:read',
+    'call:read',
     'patient:read',
     'patient:update',
     'case:read',
@@ -277,6 +303,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
 
   nurse: [
+    'blood:read',
+    'call:read',
     'patient:read',
     'case:read',
     'appointment:read',
@@ -328,6 +356,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'inventory:read',
     'analytics:read',
     'analytics:share',
+    'blood:read',
+    'vehicle:read',
+    'call:read',
     'ward:read',
     'admission:read',
     'payment:create',
@@ -343,6 +374,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
   // Department staff work a queue of released orders. Results arrive in Phase 3.
   pathologist: [
+    'donor:read',
+    'donor:manage',
+    'blood:read',
+    'blood:collect',
+    'blood:issue',
+    'blood:discard',
     'patient:read', 'case:read', 'opd:read', 'vocabulary:read',
     'order:read', 'order:update', 'prescription:read',
     'labtest:read', 'labtest:manage', 'report:read', 'report:write',

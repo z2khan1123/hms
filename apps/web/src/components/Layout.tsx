@@ -61,6 +61,20 @@ export function Layout() {
           )}
           {can('staff:read') && <NavLink to="/hr">Staff</NavLink>}
           {can('analytics:read') && <NavLink to="/analytics">Reports</NavLink>}
+          {(can('blood:read') || can('call:read')) && (
+            <details className="nav-menu">
+              <summary>Services</summary>
+              <div
+                className="nav-menu-list"
+                onClick={(e) =>
+                  e.currentTarget.closest('details')?.removeAttribute('open')
+                }
+              >
+                {can('blood:read') && <NavLink to="/blood">Blood bank</NavLink>}
+                {can('call:read') && <NavLink to="/ambulance">Ambulance</NavLink>}
+              </div>
+            </details>
+          )}
           <details className="nav-menu">
             <summary>Setup</summary>
             <div

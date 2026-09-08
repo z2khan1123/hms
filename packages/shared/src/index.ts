@@ -20,3 +20,5 @@ export * from './ward.js';
 export * from './admission.js';
 export * from './vitals.js';
 export * from './analytics.js';
+export * from './bloodbank.js';
+export * from './ambulance.js';

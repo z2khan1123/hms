@@ -181,6 +181,38 @@ enum PayslipLineKind {
   deduction
 }
 
+enum BloodGroup {
+  A_POS  @map("A+")
+  A_NEG  @map("A-")
+  B_POS  @map("B+")
+  B_NEG  @map("B-")
+  AB_POS @map("AB+")
+  AB_NEG @map("AB-")
+  O_POS  @map("O+")
+  O_NEG  @map("O-")
+}
+
+enum BloodComponent {
+  whole_blood
+  packed_red_cells
+  plasma
+  platelets
+  cryoprecipitate
+}
+
+enum VehicleType {
+  basic
+  advanced_life_support
+  patient_transport
+  mortuary
+}
+
+enum EmergencyLevel {
+  critical
+  urgent
+  routine
+}
+
 enum VitalFlag {
   low
   normal
@@ -219,6 +251,10 @@ model Tenant {
   admissionSeq    Int    @default(0)
   staffPrefix     String @default("EMP")
   staffSeq        Int    @default(0)
+  donorPrefix     String @default("DNR")
+  donorSeq        Int    @default(0)
+  callPrefix      String @default("AMB")
+  callSeq         Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -281,6 +317,11 @@ model Tenant {
   payslips              Payslip[]
   payslipLines          PayslipLine[]
   savedViews            SavedView[]
+  donors                Donor[]
+  bloodUnits            BloodUnit[]
+  bloodIssues           BloodIssue[]
+  vehicles              Vehicle[]
+  ambulanceCalls        AmbulanceCall[]
 }
 
 model User {
@@ -390,6 +431,8 @@ model Patient {
   diagnosticReports DiagnosticReport[]
   dispenses         Dispense[]
   allergies         PatientAllergy[]
+  bloodIssues       BloodIssue[]
+  ambulanceCalls    AmbulanceCall[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
@@ -488,6 +531,8 @@ model Case {
   admissions        Admission[]
   diagnosticReports DiagnosticReport[]
   dispenses         Dispense[]
+  bloodIssues       BloodIssue[]
+  ambulanceCalls    AmbulanceCall[]
 
   @@unique([tenantId, caseNo])
   @@index([tenantId, patientId, openedAt])
@@ -1856,8 +1901,10 @@ model BillItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  serviceOrder ServiceOrder?
-  dispense     Dispense?
+  serviceOrder  ServiceOrder?
+  dispense      Dispense?
+  bloodIssue    BloodIssue?
+  ambulanceCall AmbulanceCall?
 
   @@index([tenantId, caseId])
   @@index([tenantId, opdVisitId])
@@ -1947,4 +1994,183 @@ model SavedView {
   @@unique([tenantId, createdById, name])
   @@index([tenantId, dataset])
   @@index([tenantId, isShared])
+}
+
+// ---------------------------------------------------------------------------
+// Blood bank
+// ---------------------------------------------------------------------------
+
+model Donor {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  donorNo    String
+  firstName  String
+  lastName   String
+  bloodGroup BloodGroup
+  phone      String
+  birthDate  DateTime?  @db.Date
+  address    String?
+  note       String?
+  isActive   Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units BloodUnit[]
+
+  @@unique([tenantId, donorNo])
+  @@index([tenantId, bloodGroup])
+  @@index([tenantId, phone])
+}
+
+/// One physical bag. Stock on hand is DERIVED by counting units that have not
+/// been issued, discarded, or passed their expiry — there is no stored count to
+/// drift away from the shelf.
+model BloodUnit {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  bagNo      String
+  bloodGroup BloodGroup
+  component  BloodComponent
+
+  /// Null for a bag bought in rather than collected here.
+  donorId String? @db.Uuid
+  donor   Donor?  @relation(fields: [donorId], references: [id])
+
+  collectedOn DateTime @db.Date
+  /// Always set explicitly. The safe shelf life depends on the anticoagulant
+  /// and on whether the component was frozen; no default should decide it.
+  expiresOn   DateTime @db.Date
+  volumeMl    Int?
+
+  screenedAt      DateTime?
+  /// A unit that failed screening can never be issued.
+  screeningPassed Boolean?
+
+  issuedAt      DateTime?
+  discardedAt   DateTime?
+  discardReason String?
+  note          String?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  issue BloodIssue?
+
+  @@unique([tenantId, bagNo])
+  @@index([tenantId, bloodGroup, component])
+  @@index([tenantId, expiresOn])
+}
+
+/// Issuing a bag. The recipient's group is recorded as the BANK established it
+/// by cross-match, not copied from the patient record — the bench test is what
+/// the ABO compatibility check must be made against.
+model BloodIssue {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  unitId String    @unique @db.Uuid
+  unit   BloodUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  patientId String  @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+  caseId    String  @db.Uuid
+  case      Case    @relation(fields: [caseId], references: [id])
+
+  recipientGroup BloodGroup
+  crossMatchedBy String?
+
+  billItemId String?   @unique @db.Uuid
+  billItem   BillItem? @relation(fields: [billItemId], references: [id])
+
+  issuedById String?  @db.Uuid
+  issuedAt   DateTime @default(now())
+  note       String?
+
+  @@index([tenantId, patientId])
+  @@index([tenantId, issuedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Ambulance
+// ---------------------------------------------------------------------------
+
+model Vehicle {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  registrationNo String
+  model          String?
+  type           VehicleType
+  driverName     String?
+  driverPhone    String?
+
+  /// Suggested rates. What is billed is confirmed on the call.
+  baseChargeMinor  Int?
+  perKmChargeMinor Int?
+
+  note     String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  calls AmbulanceCall[]
+
+  @@unique([tenantId, registrationNo])
+  @@index([tenantId, type])
+}
+
+/// A call. The patient is nullable on purpose: an ambulance is often sent to a
+/// name and a phone number, and demanding a patient record first would mean
+/// either a delayed dispatch or a fictional patient.
+model AmbulanceCall {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  callNo    String
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+
+  patientId String?  @db.Uuid
+  patient   Patient? @relation(fields: [patientId], references: [id])
+  caseId    String?  @db.Uuid
+  case      Case?    @relation(fields: [caseId], references: [id])
+
+  callerName  String?
+  callerPhone String?
+
+  emergencyLevel EmergencyLevel
+  pickupAddress  String
+  dropAddress    String?
+
+  /// The stage is derived from these, never stored alongside them.
+  dispatchedAt DateTime  @default(now())
+  arrivedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  distanceKm  Float?
+  chargeMinor Int?
+
+  billItemId String?   @unique @db.Uuid
+  billItem   BillItem? @relation(fields: [billItemId], references: [id])
+
+  note        String?
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, callNo])
+  @@index([tenantId, dispatchedAt])
+  @@index([tenantId, vehicleId])
 }

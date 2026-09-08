@@ -78,6 +78,18 @@ const ACT_WITHOUT_READ: ReadonlyArray<readonly [Permission, Permission]> = [
   ['roster:manage', 'staff:read'],
   ['payroll:manage', 'payroll:read'],
   ['payroll:manage', 'staff:read'],
+  // Blood bank. Issuing a bag is checked against the recipient's group, so
+  // whoever may issue must be able to see both the stock and the patient.
+  ['blood:collect', 'donor:read'],
+  ['blood:collect', 'blood:read'],
+  ['blood:issue', 'blood:read'],
+  ['blood:issue', 'patient:read'],
+  ['blood:discard', 'blood:read'],
+  ['donor:manage', 'donor:read'],
+  // Ambulance. Nobody dispatches a vehicle they cannot see.
+  ['call:dispatch', 'vehicle:read'],
+  ['call:dispatch', 'call:read'],
+  ['vehicle:manage', 'vehicle:read'],
 ];
 
 describe('RBAC matrix', () => {

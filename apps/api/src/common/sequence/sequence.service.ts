@@ -13,7 +13,9 @@ export type SequenceKind =
   | 'opd'
   | 'receipt'
   | 'admission'
-  | 'staff';
+  | 'staff'
+  | 'donor'
+  | 'call';
 
 const COUNTERS = {
   mrn: { seq: 'mrnSeq', prefix: 'mrnPrefix' },
@@ -22,6 +24,8 @@ const COUNTERS = {
   receipt: { seq: 'receiptSeq', prefix: 'receiptPrefix' },
   admission: { seq: 'admissionSeq', prefix: 'admissionPrefix' },
   staff: { seq: 'staffSeq', prefix: 'staffPrefix' },
+  donor: { seq: 'donorSeq', prefix: 'donorPrefix' },
+  call: { seq: 'callSeq', prefix: 'callPrefix' },
 } as const;
 
 const PAD_WIDTH = 6;
