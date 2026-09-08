@@ -243,6 +243,13 @@ enum ComplaintSeverity {
   high
 }
 
+enum DeliveryStatus {
+  pending
+  delivered
+  failed
+  abandoned
+}
+
 enum VitalFlag {
   low
   normal
@@ -366,6 +373,9 @@ model Tenant {
   phoneCallLogs         PhoneCallLog[]
   postalLogs            PostalLog[]
   complaints            Complaint[]
+  apiKeys               ApiKey[]
+  webhookEndpoints      WebhookEndpoint[]
+  webhookDeliveries     WebhookDelivery[]
 }
 
 model User {
@@ -2436,4 +2446,100 @@ model Complaint {
   @@unique([tenantId, reference])
   @@index([tenantId, status])
   @@index([tenantId, receivedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Integration: API keys and outbound webhooks
+// ---------------------------------------------------------------------------
+
+/// A machine credential. The secret is never stored — only a SHA-256 hash of
+/// it, so a leaked database does not hand over working keys. SHA-256 rather
+/// than bcrypt on purpose: the secret is 256 bits of randomness, so there is
+/// nothing to brute-force, and bcrypt would add its deliberate slowness to
+/// every single API request.
+model ApiKey {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  description String?
+
+  /// The visible half, e.g. `hms_a1b2c3d4`. A lookup handle, not a secret.
+  prefix  String @unique
+  keyHash String
+
+  /// Exactly what this key may do. Explicit, never inherited from a role —
+  /// a key must not gain powers because somebody widened a role later.
+  scopes String[]
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, revokedAt])
+}
+
+/// Where to send events. The secret signs deliveries so the receiver can prove
+/// the call came from us and not from anyone who learned the URL.
+model WebhookEndpoint {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  url         String
+  description String?
+  secret      String
+  /// Which events this endpoint has asked for.
+  events      String[]
+  isActive    Boolean  @default(true)
+
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, isActive])
+}
+
+/// One attempt to deliver one event to one endpoint.
+///
+/// Deliveries are written inside the transaction that caused them and sent
+/// afterwards, so a webhook that is down can never fail the clinical action
+/// that triggered it. Retries back off exponentially and then give up: an
+/// unbounded queue of undeliverable events is how a webhook system quietly
+/// becomes a disk-space incident.
+model WebhookDelivery {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  webhookId String          @db.Uuid
+  webhook   WebhookEndpoint @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  event   String
+  payload Json
+
+  status   DeliveryStatus @default(pending)
+  attempts Int            @default(0)
+
+  responseStatus Int?
+  error          String?
+
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime? @default(now())
+  deliveredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The dispatcher's working index: what is due, oldest first.
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, webhookId, status])
 }

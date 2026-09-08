@@ -20,6 +20,7 @@ import {
   toIsoDateTimeOrNull,
 } from '../../common/util/dates.js';
 import { hashNationalId } from '../../common/util/national-id.js';
+import { WebhookService } from '../integration/webhook.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   patientDetailInclude,
@@ -39,6 +40,7 @@ export class PatientsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly sequence: SequenceService,
+    private readonly webhooks: WebhookService,
   ) {}
 
   async create(
@@ -49,7 +51,7 @@ export class PatientsService {
 
     const patient = await this.prisma.$transaction(async (tx) => {
       const mrn = await this.sequence.next(tx, tenantId, 'mrn');
-      return tx.patient.create({
+      const created = await tx.patient.create({
         data: {
           tenantId,
           mrn,
@@ -80,6 +82,20 @@ export class PatientsService {
         },
         include: patientDetailInclude,
       });
+
+      // Queued inside the same transaction that created the patient, so no
+      // event can describe a registration that then rolled back. Sending
+      // happens later, in the dispatcher.
+      await this.webhooks.enqueueInTx(tx, tenantId, 'patient.created', {
+        patientId: created.id,
+        mrn: created.mrn,
+        firstName: created.firstName,
+        lastName: created.lastName,
+        gender: created.gender,
+        registeredAt: created.createdAt.toISOString(),
+      });
+
+      return created;
     });
 
     return toPatientDto(patient);

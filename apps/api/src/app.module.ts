@@ -25,6 +25,7 @@ import { AmbulanceModule } from './modules/ambulance/ambulance.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { BloodBankModule } from './modules/bloodbank/bloodbank.module.js';
 import { FrontOfficeModule } from './modules/frontoffice/frontoffice.module.js';
+import { IntegrationModule } from './modules/integration/integration.module.js';
 import { RegistersModule } from './modules/registers/registers.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { HealthModule } from './modules/health/health.module.js';
@@ -91,6 +92,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     AmbulanceModule,
     RegistersModule,
     FrontOfficeModule,
+    IntegrationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

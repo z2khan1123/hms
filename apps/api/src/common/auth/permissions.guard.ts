@@ -5,8 +5,9 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { type Permission, roleHasPermission } from '@hms/shared';
+import type { Permission } from '@hms/shared';
 import type { Request } from 'express';
+import { callerHasPermission } from './granted.js';
 import { PERMISSIONS_KEY } from './permissions.decorator.js';
 
 @Injectable()
@@ -23,10 +24,14 @@ export class PermissionsGuard implements CanActivate {
     const user = context.switchToHttp().getRequest<Request>().user;
     if (!user) throw new ForbiddenException('No authenticated user');
 
-    const missing = required.filter((p) => !roleHasPermission(user.role, p));
+    const missing = required.filter((p) => !callerHasPermission(user, p));
     if (missing.length > 0) {
+      // An API key says so explicitly: "this key was not issued that scope"
+      // is a very different debugging problem from "your role lacks it".
       throw new ForbiddenException(
-        `Missing permission(s): ${missing.join(', ')}`,
+        user.scopes
+          ? `This API key is missing scope(s): ${missing.join(', ')}`
+          : `Missing permission(s): ${missing.join(', ')}`,
       );
     }
     return true;

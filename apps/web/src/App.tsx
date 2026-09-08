@@ -34,6 +34,7 @@ import { AmbulancePage } from './pages/AmbulancePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { BloodBankPage } from './pages/BloodBankPage';
 import { FrontOfficePage } from './pages/FrontOfficePage';
+import { IntegrationPage } from './pages/IntegrationPage';
 import { RegistersPage } from './pages/RegistersPage';
 import { HrPage } from './pages/HrPage';
 import { InventoryPage } from './pages/InventoryPage';
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="ambulance" element={<AmbulancePage />} />
         <Route path="registers" element={<RegistersPage />} />
         <Route path="front-office" element={<FrontOfficePage />} />
+        <Route path="integration" element={<IntegrationPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

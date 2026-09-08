@@ -83,7 +83,8 @@ Each phase is ordered to end with something sellable, not with a half-finished l
       a death also marks the patient deceased. Print formats still to come
 - [x] Front office: visitor book, call log, postal in/out, complaints
 - [ ] Patient portal + mobile app; patient ID cards
-- [ ] Public REST API + webhooks
+- [x] Public REST API + webhooks — scoped API keys, HMAC-signed deliveries with
+      bounded retry. See docs/integration.md
 - [ ] **HL7 FHIR R4 façade** (read, then write)
 - [ ] Offline-tolerant front desk (registration, billing, vitals queue and sync)
 - [ ] Custom-field builder

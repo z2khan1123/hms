@@ -160,6 +160,12 @@ export const PERMISSIONS = [
   /// see and act on complaints, which name staff and so are not for everyone
   'complaint:read',
   'complaint:manage',
+  // integration. Issuing an API key hands out standing access, and a webhook
+  // sends patient data off-site, so both are hospital-admin territory.
+  'apikey:read',
+  'apikey:manage',
+  'webhook:read',
+  'webhook:manage',
   // analytics — the saved-view layer that replaces hardcoded report pages.
   // Reaching a dataset ALSO requires that dataset's own read permission, so
   // this grants the screen, never the data behind it.

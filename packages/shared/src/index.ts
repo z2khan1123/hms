@@ -24,3 +24,4 @@ export * from './bloodbank.js';
 export * from './ambulance.js';
 export * from './registers.js';
 export * from './frontoffice.js';
+export * from './integration.js';

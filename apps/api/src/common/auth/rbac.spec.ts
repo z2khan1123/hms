@@ -98,6 +98,9 @@ const ACT_WITHOUT_READ: ReadonlyArray<readonly [Permission, Permission]> = [
   // Front office.
   ['frontoffice:manage', 'frontoffice:read'],
   ['complaint:manage', 'complaint:read'],
+  // Integration.
+  ['apikey:manage', 'apikey:read'],
+  ['webhook:manage', 'webhook:read'],
 ];
 
 describe('RBAC matrix', () => {

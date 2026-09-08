@@ -18,6 +18,7 @@ import {
 } from '@hms/shared';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { parseIsoDateOrNull, toIsoDateTimeOrNull } from '../../common/util/dates.js';
+import { WebhookService } from '../integration/webhook.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CasesService } from '../cases/cases.service.js';
 import {
@@ -32,6 +33,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly sequence: SequenceService,
     private readonly cases: CasesService,
+    private readonly webhooks: WebhookService,
   ) {}
 
   // --- bill items --------------------------------------------------------
@@ -337,6 +339,18 @@ export class BillingService {
         });
       }
     }
+
+    // Queued inside this transaction: if it rolls back no phantom event
+    // escapes, and if it commits the event is guaranteed queued. Nothing is
+    // sent from here — a webhook receiver being down must never fail a payment.
+    await this.webhooks.enqueueInTx(tx, tenantId, 'payment.received', {
+      paymentId: payment.id,
+      receiptNo: payment.receiptNo,
+      caseId: payment.caseId,
+      amountMinor: payment.amountMinor,
+      mode: payment.mode,
+      paidAt: payment.paidAt.toISOString(),
+    });
 
     return payment;
   }

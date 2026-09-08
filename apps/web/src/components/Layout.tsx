@@ -93,6 +93,9 @@ export function Layout() {
               }
             >
               <NavLink to="/setup/services">Services</NavLink>
+              {can('apikey:read') && (
+                <NavLink to="/integration">Integration</NavLink>
+              )}
               {can('labtest:read') && <NavLink to="/setup/lab-tests">Lab tests</NavLink>}
               {can('ward:read') && <NavLink to="/setup/wards">Wards &amp; beds</NavLink>}
             </div>
