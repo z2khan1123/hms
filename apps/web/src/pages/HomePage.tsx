@@ -7,9 +7,12 @@ import { sectionsFor } from '../lib/sections';
  * Where everyone lands after signing in.
  *
  * It shows only what this role can actually open. That is the point: sending
- * every role to `/patients` meant a platform operator signed in successfully
- * and was met with "Missing permission(s): patient:read", which reads as the
- * software being broken rather than as the permission working.
+ * every role to `/patients` meant a role without `patient:read` signed in
+ * successfully and was met with "Missing permission(s): patient:read", which
+ * reads as the software being broken rather than as the permission working.
+ *
+ * No role is empty today — the master account holds everything — but the
+ * empty case is still handled, because a narrower role is one matrix edit away.
  */
 export function HomePage() {
   const { user } = useAuth();
@@ -35,10 +38,9 @@ export function HomePage() {
         <div className="card">
           <h2>Nothing to open here</h2>
           <p className="muted">
-            {ROLE_LABELS[user.role]} manages tenants and user accounts across the
-            platform rather than any one hospital's clinical work, so none of the
-            hospital screens apply to it. This is the permission model working,
-            not a fault.
+            The {ROLE_LABELS[user.role]} role has not been granted access to any
+            section. This is the permission model working, not a fault — ask an
+            administrator if you need a section opened up.
           </p>
         </div>
       ) : (

@@ -4,6 +4,7 @@ import {
   ROLE_PERMISSIONS,
   ROLES,
   type Permission,
+  type Role,
 } from '@hms/shared';
 
 /**
@@ -138,19 +139,51 @@ describe('RBAC matrix', () => {
     }
   });
 
-  it('keeps platform_admin out of clinical and money data', () => {
-    // A platform operator administers tenants. Patient records are not theirs.
-    const forbidden: Permission[] = [
-      'patient:read',
-      'opd:read',
-      'report:read',
-      'bill:read',
-      'payment:read',
-      'admission:read',
-    ];
+  it('gives platform_admin every permission there is', () => {
+    // The master account. This is the assertion that keeps it master: add a
+    // permission to PERMISSIONS and forget it here, and this fails rather than
+    // leaving the Super Admin quietly locked out of the new feature.
     const held = new Set<Permission>(ROLE_PERMISSIONS.platform_admin);
-    for (const p of forbidden) {
-      expect(held.has(p), `platform_admin should not hold ${p}`).toBe(false);
+    const missing = PERMISSIONS.filter((p) => !held.has(p));
+    expect(missing, 'platform_admin must hold every permission').toEqual([]);
+  });
+
+  it('leaves platform_admin the only role holding tenant:manage', () => {
+    // Widening the master account must not have widened anyone else. Every
+    // other role stops short of at least the platform-level permission.
+    for (const role of ROLES) {
+      if (role === 'platform_admin') continue;
+      expect(
+        ROLE_PERMISSIONS[role].includes('tenant:manage'),
+        `${role} should not hold tenant:manage`,
+      ).toBe(false);
+    }
+  });
+
+  it('keeps the ordinary roles restricted', () => {
+    // The point of granting platform_admin everything was that it alone gains.
+    // These are spot checks on the boundaries that matter clinically and
+    // financially, so a future edit to the matrix cannot quietly erase them.
+    const denied: Array<[Role, Permission]> = [
+      ['doctor', 'payroll:manage'],
+      ['doctor', 'finance:manage'],
+      ['nurse', 'prescription:write'],
+      ['nurse', 'bill:create'],
+      ['pharmacist', 'report:write'],
+      ['pharmacist', 'finance:read'],
+      ['accountant', 'prescription:write'],
+      ['accountant', 'report:write'],
+      ['receptionist', 'report:write'],
+      ['receptionist', 'finance:read'],
+      ['radiologist', 'blood:issue'],
+      ['read_only', 'patient:create'],
+      ['read_only', 'payment:create'],
+    ];
+    for (const [role, permission] of denied) {
+      expect(
+        ROLE_PERMISSIONS[role].includes(permission),
+        `${role} should not hold ${permission}`,
+      ).toBe(false);
     }
   });
 });

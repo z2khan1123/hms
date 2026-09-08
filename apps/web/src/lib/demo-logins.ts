@@ -38,8 +38,7 @@ export const DEMO_LOGINS: readonly DemoLogin[] = [
     role: 'platform_admin',
     email: 'superadmin@demo-hospital.test',
     password: DEMO_PASSWORD,
-    // Worth saying plainly: this one looks empty, and that is correct.
-    note: 'Platform operator — manages tenants, sees no clinical data',
+    note: 'Master account — full access to every module',
   },
   {
     role: 'hospital_admin',

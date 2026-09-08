@@ -228,7 +228,23 @@ const READ_ONLY_SET: Permission[] = [
  * Add new permissions here explicitly; they default to no access.
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  platform_admin: ['tenant:manage', 'user:read'],
+  /**
+   * The master account: everything, without exception.
+   *
+   * Written as `PERMISSIONS` itself rather than a list that has to be kept in
+   * step. A new permission added above is held by this role the moment it
+   * exists, so the failure this role used to have — being quietly locked out of
+   * a feature somebody forgot to grant it — cannot happen again.
+   *
+   * It previously held `tenant:manage` and `user:read`, and neither is checked
+   * anywhere in the API. The effect was a Super Admin that could sign in and
+   * then reach nothing at all.
+   *
+   * Scope is still the tenant. Row-Level Security keys off the tenant on the
+   * caller's token, so this grants everything WITHIN the hospital the account
+   * belongs to, not across all hospitals on the platform.
+   */
+  platform_admin: PERMISSIONS,
 
   hospital_admin: PERMISSIONS.filter((p) => p !== 'tenant:manage'),
 

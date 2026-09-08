@@ -3,11 +3,9 @@ import { type Permission, type Role, roleHasPermission } from '@hms/shared';
 /**
  * The app's sections, and what each one needs.
  *
- * One list, used by the landing page and by the "where do I go after signing
- * in" decision. Before this, the login page sent everyone to `/patients` — so
- * a platform operator, who cannot read patients, signed in successfully and
- * was met with "Missing permission(s): patient:read". Signing in correctly and
- * landing on an error is indistinguishable from the software being broken.
+ * One list, used by the landing page, by the navigation, and by the "where do
+ * I go after signing in" decision, so the three cannot disagree about what a
+ * role can reach.
  */
 export interface Section {
   path: string;
@@ -156,8 +154,8 @@ export function sectionsFor(role: Role): Section[] {
  * Where to send someone after they sign in.
  *
  * Everyone goes to the landing page, which then shows only what they can
- * reach. A role with no sections at all — a platform operator, whose work is
- * tenants rather than patients — sees an explanation there rather than a
- * permission error on a screen it was never meant to open.
+ * reach. Sending every role to `/patients` meant a role without `patient:read`
+ * signed in correctly and was met with a permission error, which reads as the
+ * software being broken rather than as the permission working.
  */
 export const LANDING_PATH = '/home';
