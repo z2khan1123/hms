@@ -160,7 +160,7 @@ export class FhirService {
         : {}),
     };
 
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.patient.findMany({
         where,
         select: this.patientSelect,
@@ -206,7 +206,7 @@ export class FhirService {
           }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.practitioner.findMany({ where, take, skip, orderBy: { lastName: 'asc' } }),
       this.prisma.practitioner.count({ where }),
     ]);
@@ -248,7 +248,7 @@ export class FhirService {
     };
     const admissionWhere = { ...visitWhere };
 
-    const [visits, admissions] = await this.prisma.$transaction([
+    const [visits, admissions] = await Promise.all([
       this.prisma.opdVisit.findMany({
         where: visitWhere,
         orderBy: { visitAt: 'desc' },
@@ -375,7 +375,7 @@ export class FhirService {
       ...(params._id ? { id: params._id } : {}),
       ...(patientId ? { patientId } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.diagnosticReport.findMany({
         where,
         include: {
@@ -422,7 +422,7 @@ export class FhirService {
         ? { opdVisitId: this.referenceId(params.encounter) ?? undefined }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.visitDiagnosis.findMany({
         where,
         include: { icd10Code: true, opdVisit: { select: { patientId: true } } },
@@ -460,7 +460,7 @@ export class FhirService {
         ? { opdVisitId: this.referenceId(params.encounter) ?? undefined }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.prescriptionItem.findMany({
         where,
         include: {

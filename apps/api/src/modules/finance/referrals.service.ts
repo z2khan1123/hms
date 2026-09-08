@@ -105,7 +105,7 @@ export class ReferralsService {
   /** Soft delete while cases or payments reference it, hard delete otherwise. */
   async removeReferrer(tenantId: string, id: string): Promise<DeleteResult> {
     await this.findReferrer(tenantId, id);
-    const [cases, payments] = await this.prisma.$transaction([
+    const [cases, payments] = await Promise.all([
       this.prisma.case.count({ where: { tenantId, referrerId: id } }),
       this.prisma.referralPayment.count({
         where: { tenantId, referrerId: id },
@@ -177,7 +177,7 @@ export class ReferralsService {
     if (referrerIds.length === 0) return map;
     for (const id of referrerIds) map.set(id, { ...EMPTY_REFERRER_STATS });
 
-    const [caseGroups, paymentGroups, cases] = await this.prisma.$transaction([
+    const [caseGroups, paymentGroups, cases] = await Promise.all([
       this.prisma.case.groupBy({
         by: ['referrerId'],
         where: { tenantId, referrerId: { in: referrerIds } },

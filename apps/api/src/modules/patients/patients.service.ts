@@ -122,7 +122,7 @@ export class PatientsService {
         : {}),
     };
 
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.patient.findMany({
         where,
         include: patientDetailInclude,
@@ -174,7 +174,7 @@ export class PatientsService {
     };
 
     const [patient, previousVisitCount, lastVisit, diagnoses, previousAdmissionCount] =
-      await this.prisma.$transaction([
+      await Promise.all([
         this.prisma.patient.findFirst({
           where: { id, tenantId, deletedAt: null },
           select: { knownAllergies: true, updatedAt: true },

@@ -232,7 +232,7 @@ export class PharmacyService {
     if (!existing) throw new NotFoundException('Medicine not found');
 
     const [batches, dispenseItems, prescriptionItems] =
-      await this.prisma.$transaction([
+      await Promise.all([
         this.prisma.medicineBatch.count({ where: { tenantId, medicineId: id } }),
         this.prisma.dispenseItem.count({ where: { tenantId, medicineId: id } }),
         this.prisma.prescriptionItem.count({
@@ -579,7 +579,7 @@ export class PharmacyService {
     });
     if (!patient) throw new NotFoundException('Patient not found');
 
-    const [allergies, medicines] = await this.prisma.$transaction([
+    const [allergies, medicines] = await Promise.all([
       this.prisma.patientAllergy.findMany({
         where: { tenantId, patientId: input.patientId },
         orderBy: { recordedAt: 'desc' },
@@ -624,7 +624,7 @@ export class PharmacyService {
       expiryDate: { gte: asOf },
     };
 
-    const [sums, expiries] = await this.prisma.$transaction([
+    const [sums, expiries] = await Promise.all([
       this.prisma.medicineBatch.groupBy({
         by: ['medicineId'],
         where: nonExpired,

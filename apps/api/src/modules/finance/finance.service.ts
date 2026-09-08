@@ -301,7 +301,7 @@ export class FinanceService {
     };
 
     const [incomeAgg, expenseAgg, incomeGroups, expenseGroups] =
-      await this.prisma.$transaction([
+      await Promise.all([
         this.prisma.income.aggregate({
           where: incomeWhere,
           _sum: { amountMinor: true },
@@ -325,7 +325,7 @@ export class FinanceService {
     const incomeMinor = incomeAgg._sum.amountMinor ?? 0;
     const expenseMinor = expenseAgg._sum.amountMinor ?? 0;
 
-    const [incomeHeads, expenseHeads] = await this.prisma.$transaction([
+    const [incomeHeads, expenseHeads] = await Promise.all([
       this.prisma.incomeHead.findMany({
         where: { tenantId, id: { in: incomeGroups.map((g) => g.headId) } },
         select: { id: true, name: true },

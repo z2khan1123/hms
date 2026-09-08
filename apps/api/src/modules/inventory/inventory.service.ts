@@ -390,7 +390,7 @@ export class InventoryService {
     storeId?: string,
   ): Promise<Map<string, ItemStock>> {
     if (itemIds.length === 0) return new Map<string, ItemStock>();
-    const [groups, stores] = await this.prisma.$transaction([
+    const [groups, stores] = await Promise.all([
       this.prisma.stockMove.groupBy({
         by: ['itemId', 'storeId', 'kind'],
         where: { tenantId, itemId: { in: itemIds }, storeId },

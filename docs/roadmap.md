@@ -14,7 +14,9 @@ Each phase is ordered to end with something sellable, not with a half-finished l
 - [x] Postgres on Neon; initial migration applied; seed data
 - [x] End-to-end verified: login, patient list, appointment booking, status transitions
 - [ ] CI green on a real push
-- [ ] Postgres RLS migration + a test proving cross-tenant isolation
+- [x] Postgres RLS migration — 72 tables, fail-closed policies, verified working.
+      One ops step left: point DATABASE_URL at a NOBYPASSRLS role. See
+      docs/row-level-security.md
 
 ## Phase 1 — Front desk and outpatient clinic (months 0–3)
 
