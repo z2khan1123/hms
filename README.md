@@ -73,12 +73,28 @@ the exact email/password it prints.
 | `npm run dev`        | Run API + web together                    |
 | `npm run dev:api`    | API only (watch mode)                     |
 | `npm run dev:web`    | Web only                                  |
+| `npm run dev:ports`  | Check whether :3000 / :5173 are already taken |
 | `npm run build`      | Build shared → api → web                  |
 | `npm run lint`       | Lint all workspaces                       |
 | `npm run db:migrate` | Create/apply a Prisma migration           |
 | `npm run db:studio`  | Open Prisma Studio                        |
 | `npm run db:reset`   | Drop, re-migrate, re-seed                 |
 | `npm run infra:down` | Stop local infra                          |
+
+Run **one** dev stack at a time. A second `npm run dev` cannot work: the API
+loses the race for port 3000, `nest start --watch` restarts it into the same
+collision, and because Vite proxies `/api` to a port nothing is listening on,
+sign-in fails with `Request failed with status code 502` — which looks like an
+auth bug and is not one. `npm run dev` checks the ports first and stops with an
+explanation rather than starting into that state.
+
+If you hit the 502, look for duplicate watchers before looking at the code:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Select-Object ProcessId, CommandLine | Format-Table -Wrap
+```
+
+More than one `nest start --watch` in that list is the problem.
 
 ## Documentation
 

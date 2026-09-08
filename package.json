@@ -11,7 +11,9 @@
     "packages/*"
   ],
   "scripts": {
+    "predev": "node scripts/preflight-dev.mjs",
     "dev": "npm run build --workspace=@hms/shared && concurrently -n shared,api,web -c gray,blue,green \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:ports": "node scripts/preflight-dev.mjs",
     "dev:shared": "npm run dev --workspace=@hms/shared",
     "dev:api": "npm run start:dev --workspace=api",
     "dev:web": "npm run dev --workspace=web",
