@@ -23,6 +23,31 @@ const TICK_MS = 15_000;
 const BATCH = 20;
 /** A receiver that hangs must not hold a worker slot indefinitely. */
 const REQUEST_TIMEOUT_MS = 10_000;
+/**
+ * After a failed tick, sit out this many ticks before trying again, doubling
+ * each time up to the cap. At 15s a tick the cap is 20 minutes.
+ *
+ * Serverless Postgres suspends its compute when idle, so "cannot reach the
+ * database" is an ordinary overnight condition here, not an incident. Polling
+ * straight through it produced an error every fifteen seconds until morning —
+ * thousands of identical stack traces that bury anything real.
+ */
+const MAX_BACKOFF_TICKS = 80;
+
+/** Transient infrastructure, not a defect in this code. */
+function isTransient(e: unknown): boolean {
+  const code = (e as { code?: string }).code;
+  // P1001 unreachable, P1002 timed out, P1008 operation timed out,
+  // P1017 server closed the connection, P2024 no free connection in the pool.
+  if (code && ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'].includes(code)) {
+    return true;
+  }
+  const message = String((e as Error)?.message ?? e);
+  return (
+    message.includes("Can't reach database server") ||
+    message.includes('Timed out fetching a new connection')
+  );
+}
 
 /**
  * Sends queued webhook deliveries.
@@ -42,6 +67,11 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private stopped = false;
+  /** Ticks still to sit out after a failure, and how long that wait now is. */
+  private skipTicks = 0;
+  private backoffTicks = 0;
+  /** So one outage logs once rather than once per tick. */
+  private outageLogged = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -67,6 +97,10 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
   /** One pass. Public so a test can drive it without waiting for the clock. */
   async tick(): Promise<number> {
     if (this.running || this.stopped) return 0;
+    if (this.skipTicks > 0) {
+      this.skipTicks -= 1;
+      return 0;
+    }
     this.running = true;
     try {
       const due = await this.prisma.webhookDelivery.findMany({
@@ -84,13 +118,52 @@ export class WebhookDispatcher implements OnModuleInit, OnModuleDestroy {
         if (this.stopped) break;
         if (await this.attempt(d)) sent += 1;
       }
+      this.recovered();
       return sent;
     } catch (e) {
-      this.logger.error(`Dispatch tick failed: ${String(e)}`);
+      this.backOff(e);
       return 0;
     } finally {
       this.running = false;
     }
+  }
+
+  /** A tick got through. Clear the backoff and say so if we had complained. */
+  private recovered(): void {
+    if (this.outageLogged) {
+      this.logger.log('Database reachable again; webhook dispatch resumed');
+    }
+    this.skipTicks = 0;
+    this.backoffTicks = 0;
+    this.outageLogged = false;
+  }
+
+  private backOff(e: unknown): void {
+    this.backoffTicks = Math.min(
+      this.backoffTicks === 0 ? 1 : this.backoffTicks * 2,
+      MAX_BACKOFF_TICKS,
+    );
+    this.skipTicks = this.backoffTicks;
+
+    const waitSeconds = (this.backoffTicks * TICK_MS) / 1000;
+
+    if (isTransient(e)) {
+      // One line, once, at warn. The condition is expected and self-healing;
+      // what a reader needs is that dispatch is paused and for how long.
+      if (!this.outageLogged) {
+        this.outageLogged = true;
+        this.logger.warn(
+          `Database unreachable; pausing webhook dispatch, retrying in ${waitSeconds}s ` +
+            `(this is normal when a serverless database has suspended)`,
+        );
+      }
+      return;
+    }
+
+    // Anything else is a real fault and keeps its detail.
+    this.logger.error(
+      `Dispatch tick failed, retrying in ${waitSeconds}s: ${String(e)}`,
+    );
   }
 
   private async attempt(delivery: {
