@@ -85,7 +85,8 @@ Each phase is ordered to end with something sellable, not with a half-finished l
 - [ ] Patient portal + mobile app; patient ID cards
 - [x] Public REST API + webhooks — scoped API keys, HMAC-signed deliveries with
       bounded retry. See docs/integration.md
-- [ ] **HL7 FHIR R4 façade** (read, then write)
+- [x] **HL7 FHIR R4 façade** — read-only, 8 resource types, OperationOutcome errors.
+      Writes stay on the REST API, where the clinical rules are
 - [ ] Offline-tolerant front desk (registration, billing, vitals queue and sync)
 - [ ] Custom-field builder
 - [ ] Per-tenant database split path for large hospitals

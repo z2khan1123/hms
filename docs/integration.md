@@ -137,3 +137,64 @@ The dispatcher runs as an interval inside the API process. That is honest about
 what it is: correct for a single node, and the thing to replace with a real
 queue when this runs on several. Each attempt is claimed with a conditional
 update, so two processes racing on the same row cannot both send it.
+
+## FHIR R4
+
+A read-only FHIR R4 façade is served at `/api/fhir`. Start at
+`GET /api/fhir/metadata` for the CapabilityStatement, which declares exactly
+what this server does and nothing more.
+
+### Read-only is a decision, not a stage
+
+Our own screens enforce rules a generic FHIR write would walk straight past —
+an unpaid order cannot start, blood cannot cross an ABO barrier, a finalised
+payroll run stops being editable. A standard that let any client write around
+those would be a liability rather than a feature. Anything that needs to write
+uses the REST API above, where the rules live.
+
+### Resources
+
+| Resource | Source | Notes |
+| --- | --- | --- |
+| `Patient` | Patient | `deceasedDateTime` comes from the death register |
+| `Practitioner` | Practitioner | |
+| `Organization` | Tenant | You can only read your own |
+| `Encounter` | OPD visits **and** admissions | `AMB` vs `IMP` |
+| `Observation` | Vitals **and** lab values | `category` separates them |
+| `DiagnosticReport` | Diagnostic reports | `final` only once issued |
+| `Condition` | Visit diagnoses | Coded to ICD-10 |
+| `MedicationRequest` | Prescription items | Drug as text, not a coded dictionary |
+
+### Search
+
+`_id`, `_count` (capped at 200), `_offset`, plus per-resource parameters listed
+in the CapabilityStatement. `patient` and `subject` are interchangeable and
+accept `Patient/<id>` or a bare id. `identifier` accepts a bare value or
+`system|value`.
+
+A search returns a `searchset` Bundle whose `total` is how many matched — not
+how many are in this page. A consumer that conflates the two silently stops at
+page one. Follow the `next` link.
+
+### Honest gaps
+
+- **No LOINC or SNOMED.** Observations carry `code.text` — the name the hospital
+  actually uses. Inventing codes we do not hold would be worse than a plain
+  name, because a consumer would trust them.
+- **No `_include`, `_revinclude`, `_sort` or `_lastUpdated`.** Follow the
+  references.
+- **No `Bundle` transactions, no `$everything`, no subscriptions.** Use
+  webhooks for push.
+
+### Errors
+
+Errors are `OperationOutcome` resources with FHIR issue codes — `not-found`,
+`forbidden`, `login`, `invalid` — served as `application/fhir+json`. A client
+written against FHIR can parse a failure the same way it parses a success.
+
+### Permissions
+
+FHIR is a different shape over the same records, never a different set of
+permissions. Each resource requires the read permission for the data behind it
+(`Patient` needs `patient:read`, `DiagnosticReport` needs `report:read`, and so
+on), and a scoped API key works here exactly as it does elsewhere.
