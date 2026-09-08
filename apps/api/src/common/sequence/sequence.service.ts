@@ -15,7 +15,11 @@ export type SequenceKind =
   | 'admission'
   | 'staff'
   | 'donor'
-  | 'call';
+  | 'call'
+  | 'birth'
+  | 'death'
+  | 'visitor'
+  | 'complaint';
 
 const COUNTERS = {
   mrn: { seq: 'mrnSeq', prefix: 'mrnPrefix' },
@@ -26,6 +30,10 @@ const COUNTERS = {
   staff: { seq: 'staffSeq', prefix: 'staffPrefix' },
   donor: { seq: 'donorSeq', prefix: 'donorPrefix' },
   call: { seq: 'callSeq', prefix: 'callPrefix' },
+  birth: { seq: 'birthSeq', prefix: 'birthPrefix' },
+  death: { seq: 'deathSeq', prefix: 'deathPrefix' },
+  visitor: { seq: 'visitorSeq', prefix: 'visitorPrefix' },
+  complaint: { seq: 'complaintSeq', prefix: 'complaintPrefix' },
 } as const;
 
 const PAD_WIDTH = 6;

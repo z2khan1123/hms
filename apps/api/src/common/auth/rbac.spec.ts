@@ -90,6 +90,14 @@ const ACT_WITHOUT_READ: ReadonlyArray<readonly [Permission, Permission]> = [
   ['call:dispatch', 'vehicle:read'],
   ['call:dispatch', 'call:read'],
   ['vehicle:manage', 'vehicle:read'],
+  // Registers. A death record closes a patient's file, so certifying one
+  // requires being able to see the patient it belongs to.
+  ['birth:manage', 'birth:read'],
+  ['death:manage', 'death:read'],
+  ['death:manage', 'patient:read'],
+  // Front office.
+  ['frontoffice:manage', 'frontoffice:read'],
+  ['complaint:manage', 'complaint:read'],
 ];
 
 describe('RBAC matrix', () => {

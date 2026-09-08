@@ -148,6 +148,18 @@ export const PERMISSIONS = [
   'vehicle:manage',
   'call:read',
   'call:dispatch',
+  // statutory registers. The hospital issues the source document; the family
+  // registers it with the Union Council, which is recorded back here.
+  'birth:read',
+  'birth:manage',
+  'death:read',
+  'death:manage',
+  // front office — the visitor book, call log, postal register and complaints
+  'frontoffice:read',
+  'frontoffice:manage',
+  /// see and act on complaints, which name staff and so are not for everyone
+  'complaint:read',
+  'complaint:manage',
   // analytics — the saved-view layer that replaces hardcoded report pages.
   // Reaching a dataset ALSO requires that dataset's own read permission, so
   // this grants the screen, never the data behind it.
@@ -166,6 +178,9 @@ const READ_ONLY_SET: Permission[] = [
   'blood:read',
   'vehicle:read',
   'call:read',
+  'birth:read',
+  'death:read',
+  'frontoffice:read',
   'patient:read',
   'case:read',
   'appointment:read',
@@ -214,6 +229,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'call:read',
     'call:dispatch',
     'blood:read',
+    'birth:read',
+    'birth:manage',
+    'death:read',
+    'frontoffice:read',
+    'frontoffice:manage',
+    'complaint:read',
+    'complaint:manage',
     'patient:create',
     'patient:read',
     'patient:update',
@@ -256,6 +278,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'blood:read',
     'call:read',
+    'birth:read',
+    'birth:manage',
+    'death:read',
+    'death:manage',
     'patient:read',
     'patient:update',
     'case:read',
@@ -305,6 +331,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   nurse: [
     'blood:read',
     'call:read',
+    'birth:read',
+    'birth:manage',
+    'death:read',
+    'frontoffice:read',
     'patient:read',
     'case:read',
     'appointment:read',

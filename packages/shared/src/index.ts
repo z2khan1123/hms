@@ -22,3 +22,5 @@ export * from './vitals.js';
 export * from './analytics.js';
 export * from './bloodbank.js';
 export * from './ambulance.js';
+export * from './registers.js';
+export * from './frontoffice.js';

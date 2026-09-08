@@ -61,7 +61,10 @@ export function Layout() {
           )}
           {can('staff:read') && <NavLink to="/hr">Staff</NavLink>}
           {can('analytics:read') && <NavLink to="/analytics">Reports</NavLink>}
-          {(can('blood:read') || can('call:read')) && (
+          {(can('blood:read') ||
+            can('call:read') ||
+            can('birth:read') ||
+            can('frontoffice:read')) && (
             <details className="nav-menu">
               <summary>Services</summary>
               <div
@@ -72,6 +75,12 @@ export function Layout() {
               >
                 {can('blood:read') && <NavLink to="/blood">Blood bank</NavLink>}
                 {can('call:read') && <NavLink to="/ambulance">Ambulance</NavLink>}
+                {(can('birth:read') || can('death:read')) && (
+                  <NavLink to="/registers">Registers</NavLink>
+                )}
+                {can('frontoffice:read') && (
+                  <NavLink to="/front-office">Front office</NavLink>
+                )}
               </div>
             </details>
           )}

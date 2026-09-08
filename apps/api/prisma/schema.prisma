@@ -213,6 +213,36 @@ enum EmergencyLevel {
   routine
 }
 
+enum DeliveryType {
+  normal
+  caesarean
+  assisted
+  other
+}
+
+enum CallDirection {
+  incoming
+  outgoing
+}
+
+enum PostalDirection {
+  received
+  dispatched
+}
+
+enum ComplaintStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum ComplaintSeverity {
+  low
+  medium
+  high
+}
+
 enum VitalFlag {
   low
   normal
@@ -255,6 +285,14 @@ model Tenant {
   donorSeq        Int    @default(0)
   callPrefix      String @default("AMB")
   callSeq         Int    @default(0)
+  birthPrefix     String @default("BIR")
+  birthSeq        Int    @default(0)
+  deathPrefix     String @default("DTH")
+  deathSeq        Int    @default(0)
+  visitorPrefix   String @default("VIS")
+  visitorSeq      Int    @default(0)
+  complaintPrefix String @default("CMP")
+  complaintSeq    Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -322,6 +360,12 @@ model Tenant {
   bloodIssues           BloodIssue[]
   vehicles              Vehicle[]
   ambulanceCalls        AmbulanceCall[]
+  birthRecords          BirthRecord[]
+  deathRecords          DeathRecord[]
+  visitorLogs           VisitorLog[]
+  phoneCallLogs         PhoneCallLog[]
+  postalLogs            PostalLog[]
+  complaints            Complaint[]
 }
 
 model User {
@@ -338,10 +382,11 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  refreshTokens RefreshToken[]
-  practitioner  Practitioner?
-  staffProfile  StaffProfile?
-  savedViews    SavedView[]
+  refreshTokens      RefreshToken[]
+  practitioner       Practitioner?
+  staffProfile       StaffProfile?
+  savedViews         SavedView[]
+  assignedComplaints Complaint[]    @relation("ComplaintAssignee")
 
   @@unique([tenantId, email])
   @@index([email])
@@ -433,6 +478,12 @@ model Patient {
   allergies         PatientAllergy[]
   bloodIssues       BloodIssue[]
   ambulanceCalls    AmbulanceCall[]
+  birthsAsMother    BirthRecord[]  @relation("BirthMother")
+  birthsAsChild     BirthRecord[]  @relation("BirthChild")
+  deathRecord       DeathRecord?
+  visitorLogs       VisitorLog[]
+  phoneCallLogs     PhoneCallLog[]
+  complaints        Complaint[]
 
   @@unique([tenantId, mrn])
   @@index([tenantId, lastName, firstName])
@@ -458,9 +509,11 @@ model Practitioner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  appointments Appointment[]
-  opdVisits    OpdVisit[]
-  admissions   Admission[]
+  appointments  Appointment[]
+  opdVisits     OpdVisit[]
+  admissions    Admission[]
+  birthsAttended BirthRecord[]
+  deathsCertified DeathRecord[]
 
   @@index([tenantId, lastName, firstName])
 }
@@ -2173,4 +2226,214 @@ model AmbulanceCall {
   @@unique([tenantId, callNo])
   @@index([tenantId, dispatchedAt])
   @@index([tenantId, vehicleId])
+}
+
+// ---------------------------------------------------------------------------
+// Statutory registers
+// ---------------------------------------------------------------------------
+
+/// The hospital's source document for a birth. The state registration happens
+/// at the Union Council and is recorded back here when the family reports it,
+/// which can be months later.
+model BirthRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  certificateNo String
+
+  /// Often blank at the time of the birth. The register must not force an
+  /// invented name onto a legal document.
+  childName        String?
+  gender           Gender
+  bornAt           DateTime
+  birthWeightGrams Int?
+  deliveryType     DeliveryType
+
+  motherPatientId String?  @db.Uuid
+  motherPatient   Patient? @relation("BirthMother", fields: [motherPatientId], references: [id])
+  /// Used when the mother is not registered here.
+  motherName      String?
+  motherCnicHash  String?
+  motherCnicLast4 String?
+  fatherName      String?
+  fatherCnicHash  String?
+  fatherCnicLast4 String?
+  contactPhone    String?
+  address         String?
+
+  attendedById String?       @db.Uuid
+  attendedBy   Practitioner? @relation(fields: [attendedById], references: [id])
+  /// Set if the newborn is registered as a patient in their own right.
+  childPatientId String?  @db.Uuid
+  childPatient   Patient? @relation("BirthChild", fields: [childPatientId], references: [id])
+
+  note String?
+
+  /// Union Council / NADRA registration, once the family reports it back.
+  registrationNo String?
+  registeredOn   DateTime? @db.Date
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, certificateNo])
+  @@index([tenantId, bornAt])
+  @@index([tenantId, registrationNo])
+}
+
+/// A death record closes a patient's file. Recording one also sets
+/// `Patient.status = deceased`, so there is one answer to whether someone is
+/// alive rather than two that can disagree.
+model DeathRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  certificateNo String
+
+  patientId String  @unique @db.Uuid
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  diedAt       DateTime
+  causeOfDeath String
+  placeOfDeath String?
+
+  certifiedById String?       @db.Uuid
+  certifiedBy   Practitioner? @relation(fields: [certifiedById], references: [id])
+
+  informantName     String?
+  informantPhone    String?
+  informantRelation String?
+  note              String?
+
+  registrationNo String?
+  registeredOn   DateTime? @db.Date
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, certificateNo])
+  @@index([tenantId, diedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Front office
+// ---------------------------------------------------------------------------
+
+/// The visitor book. Being inside is derived from `leftAt` being null, which is
+/// what makes this usable as an evacuation list.
+model VisitorLog {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  passNo String
+  name   String
+  phone  String?
+
+  patientId String?  @db.Uuid
+  patient   Patient? @relation(fields: [patientId], references: [id])
+  /// Free text when they are visiting a department rather than a person.
+  visitingWhom String?
+
+  purpose          String?
+  idCardLast4      String?
+  numberOfVisitors Int       @default(1)
+  arrivedAt        DateTime  @default(now())
+  leftAt           DateTime?
+  note             String?
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, passNo])
+  @@index([tenantId, arrivedAt])
+  @@index([tenantId, leftAt])
+}
+
+model PhoneCallLog {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  direction  CallDirection
+  callerName String
+  phone      String?
+
+  patientId String?  @db.Uuid
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  purpose         String?
+  calledAt        DateTime  @default(now())
+  durationMinutes Int?
+  outcome         String?
+  followUpOn      DateTime? @db.Date
+  note            String?
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, calledAt])
+  @@index([tenantId, followUpOn])
+}
+
+model PostalLog {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  direction   PostalDirection
+  party       String
+  addressedTo String?
+  reference   String?
+  courier     String?
+  trackingNo  String?
+  onDate      DateTime        @db.Date
+  note        String?
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, onDate])
+  @@index([tenantId, direction])
+}
+
+model Complaint {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  reference       String
+  complainantName String
+  phone           String?
+
+  patientId String?  @db.Uuid
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  about       String?
+  severity    ComplaintSeverity
+  description String
+  status      ComplaintStatus   @default(open)
+
+  assignedToId String? @db.Uuid
+  assignedTo   User?   @relation("ComplaintAssignee", fields: [assignedToId], references: [id])
+  /// Required before a complaint can be resolved or closed.
+  resolution   String?
+
+  receivedAt DateTime  @default(now())
+  resolvedAt DateTime?
+
+  recordedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
 }

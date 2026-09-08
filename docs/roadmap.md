@@ -79,8 +79,9 @@ Each phase is ordered to end with something sellable, not with a half-finished l
 - [x] Blood bank: donors, stock by group, components, issue — with an enforced ABO/Rh
       compatibility check, including the reversed rule for plasma
 - [x] Ambulance: vehicle registry, call dispatch, emergency level, billing, response times
-- [ ] Birth and death registers with statutory print formats
-- [ ] Front office: visitor book, call log, postal in/out, complaints
+- [x] Birth and death registers — Union Council / NADRA registration recorded back;
+      a death also marks the patient deceased. Print formats still to come
+- [x] Front office: visitor book, call log, postal in/out, complaints
 - [ ] Patient portal + mobile app; patient ID cards
 - [ ] Public REST API + webhooks
 - [ ] **HL7 FHIR R4 façade** (read, then write)
