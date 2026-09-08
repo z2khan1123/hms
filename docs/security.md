@@ -20,20 +20,36 @@ Nothing above the `AuthModule` boundary should need to change.
 
 ## Authorization — RBAC
 
-Roles (MVP), defined with their permission sets in
-`packages/shared/src/rbac.ts`:
+Ten roles, defined with their permission sets in `packages/shared/src/rbac.ts`,
+which is the only place they are defined. That file is the authority; this table
+is a summary and will be the thing that is out of date if the two disagree.
 
-| Role              | Scope    | Sample permissions                                  |
-| ----------------- | -------- | -------------------------------------------------- |
-| `platform_admin`  | platform | manage tenants; no PHI access by default          |
-| `hospital_admin`  | tenant   | manage users, all patient & appointment ops       |
-| `front_desk`      | tenant   | register patients, book/manage appointments       |
-| `practitioner`    | tenant   | read patients, read own appointments, clinical notes |
-| `read_only`       | tenant   | read patients & appointments                      |
+| Role              | Scope    | Sample permissions                                       |
+| ----------------- | -------- | -------------------------------------------------------- |
+| `platform_admin`  | tenant   | every permission there is — the master account           |
+| `hospital_admin`  | tenant   | everything except `tenant:manage`                        |
+| `doctor`          | tenant   | consultations, orders, prescribing, admit and discharge  |
+| `nurse`           | tenant   | vitals, ward, nurse notes                                |
+| `receptionist`    | tenant   | registration, appointments, cash, front office           |
+| `accountant`      | tenant   | billing, payments, ledgers, payroll, audit               |
+| `pharmacist`      | tenant   | medicines, stock, dispensing, allergy check              |
+| `pathologist`     | tenant   | lab worklist, results, blood bank                        |
+| `radiologist`     | tenant   | imaging worklist and reports                             |
+| `read_only`       | tenant   | read across the clinical and financial record            |
+
+`platform_admin` is the master account and holds `PERMISSIONS` itself rather
+than a list maintained beside it, so a permission added later is held the moment
+it exists. Note what this does *not* mean: its reach is still one tenant, since
+Row-Level Security keys off the tenant on the caller's token.
 
 - Routes declare needs with `@Permissions('patient:create')`.
-- `RolesGuard` resolves `req.user.role → Set<permission>` from the shared matrix.
-- Least privilege: a new permission defaults to **no role** until explicitly granted.
+- `PermissionsGuard` resolves `req.user.role → Set<permission>` from the shared
+  matrix, via `callerHasPermission`. An API key is judged only on its issued
+  scopes, never on the role it was created under.
+- Least privilege: a new permission defaults to **no role** except
+  `platform_admin` until explicitly granted.
+- The invariants in `apps/api/src/common/auth/rbac.spec.ts` are part of this:
+  they assert that no role can act without the read that action depends on.
 
 ## Multi-tenant isolation
 
