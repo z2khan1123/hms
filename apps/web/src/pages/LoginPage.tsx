@@ -18,6 +18,62 @@ const CAPABILITIES = [
   'Ward, roster, payroll, inventory and the ledgers',
 ];
 
+/**
+ * The illustration on the identity panel.
+ *
+ * Drawn here rather than fetched: an original line drawing has no licensing
+ * question hanging over it, weighs nothing, stays sharp at any size, and takes
+ * its colour from the panel it sits on — none of which is true of a stock
+ * photograph. It is decorative, so it is hidden from assistive technology.
+ */
+function LoginArtwork() {
+  return (
+    <svg
+      className="login-art"
+      viewBox="0 0 360 186"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {/* Left wing */}
+      <g opacity="0.5">
+        <path d="M36 140V94a2 2 0 0 1 2-2h44" />
+        <path d="M48 106h10M48 120h10M66 106h10M66 120h10" opacity="0.7" />
+      </g>
+
+      {/* Main block, with the cross over the entrance */}
+      <g opacity="0.9">
+        <path d="M96 140V46a3 3 0 0 1 3-3h84a3 3 0 0 1 3 3v94" />
+        <path d="M133 140v-26a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v26" opacity="0.8" />
+        <path d="M135 62h5v-5h6v5h5v6h-5v5h-6v-5h-5z" fill="currentColor" stroke="none" />
+        <g opacity="0.62">
+          <path d="M110 84h14M110 98h14M158 84h14M158 98h14" />
+        </g>
+      </g>
+
+      {/* Right wing */}
+      <g opacity="0.5">
+        <path d="M186 140V74a2 2 0 0 1 2-2h42a2 2 0 0 1 2 2v66" />
+        <path d="M198 88h10M198 102h10M216 88h10M216 102h10" opacity="0.7" />
+      </g>
+
+      {/* The ground the building stands on, and beneath it the reason it
+          exists. Keeping the trace clear of the building matters: crossing it
+          made both harder to read as either one thing or the other. */}
+      <path d="M14 140h332" opacity="0.3" />
+      <path
+        d="M14 164h54l6-10 7 20 8-30 9 36 7-16 6 0h56l6-9 7 18 8-27 8 32 7-14 6 0h100"
+        opacity="0.95"
+        strokeWidth="2.2"
+      />
+    </svg>
+  );
+}
+
 export function LoginPage() {
   const { user, login, register } = useAuth();
   const navigate = useNavigate();
@@ -85,6 +141,8 @@ export function LoginPage() {
             ))}
           </ul>
         </div>
+
+        <LoginArtwork />
 
         <p className="login-brand-foot">
           Access is logged. Sign in only with your own account.

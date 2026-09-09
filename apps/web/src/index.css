@@ -833,8 +833,27 @@ tr.row-low > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   padding: 40px 44px;
   color: #eaf2ff;
   /* A calm clinical blue-green. Deep enough that white type sits on it
-     comfortably without a scrim. */
-  background: linear-gradient(160deg, #0d3b66 0%, #10557a 55%, #0e6b73 100%);
+     comfortably without a scrim.
+     Over it: a soft light from the top right, and a field of medical crosses
+     faint enough to be texture rather than pattern — at 4% they read as a
+     surface, not as decoration competing with the type. Both are drawn here
+     rather than fetched, so the panel needs no network and no image licence. */
+  background:
+    radial-gradient(circle at 78% 8%, rgb(255 255 255 / 11%), transparent 46%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='46' height='46' viewBox='0 0 46 46'%3E%3Cpath d='M20 9h6v11h11v6H26v11h-6V26H9v-6h11z' fill='%23ffffff' fill-opacity='0.04'/%3E%3C/svg%3E"),
+    linear-gradient(160deg, #0d3b66 0%, #10557a 55%, #0e6b73 100%);
+}
+
+/* The illustration sits at the foot of the panel, above the note. It is the
+   last thing to get space and the first to give it back: on a short window the
+   text matters more than the picture. */
+.login-art {
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  margin-top: auto;
+  color: #ffffff;
+  opacity: 0.85;
 }
 .login-brand-top { display: flex; align-items: center; gap: 12px; }
 .login-logo {
@@ -993,6 +1012,7 @@ tr.row-low > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
      shared ward tablet it still matters which system you are signing in to. */
   .login-brand { gap: 0; padding: 18px 20px; }
   .login-brand-body,
+  .login-art,
   .login-brand-foot { display: none; }
   .login-panel { padding: 24px 16px 40px; align-items: flex-start; }
 }
