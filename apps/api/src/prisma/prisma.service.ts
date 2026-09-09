@@ -32,6 +32,26 @@ const UNSCOPED_MODELS = new Set([
   'idempotencyRecord',
 ]);
 
+/**
+ * Interactive transactions get longer than Prisma's defaults.
+ *
+ * Prisma allows 5s for the whole callback and 2s to obtain a connection. Those
+ * suit a database on the same machine. Ours is serverless and in another
+ * region: a registration is several round trips of a couple of hundred
+ * milliseconds each, and if the compute has suspended the first one also pays
+ * the wake. Registering a patient was failing with "Transaction already closed
+ * ... 5770 ms passed" — not under load, just on an ordinary morning against a
+ * database that had been idle.
+ *
+ * These are ceilings, not waits: a transaction that finishes in 300ms still
+ * finishes in 300ms. They exist so a slow round trip fails slowly rather than
+ * losing the patient's registration.
+ */
+const INTERACTIVE_TX_DEFAULTS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 const SET_TENANT = (tenantId: string) =>
   Prisma.sql`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
 
@@ -102,11 +122,21 @@ export class PrismaService
     }
   }
 
-  /** The un-extended transaction, so the wrapper above cannot recurse. */
+  /**
+   * The un-extended transaction, so the wrapper above cannot recurse.
+   *
+   * It carries the same generous timeouts as any other interactive
+   * transaction, and needs them more than most: Row-Level Security means EVERY
+   * tenant-scoped query runs through here, so Prisma's 5s default was being
+   * applied to each individual read against a database in another region. A
+   * single `findFirst` behind a cold compute was enough to exceed it, and the
+   * request failed with "Transaction already closed" — which reads as a bug in
+   * the query rather than as latency.
+   */
   private $baseTransaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
-    return super.$transaction(fn);
+    return super.$transaction(fn, INTERACTIVE_TX_DEFAULTS);
   }
 
   /**
@@ -141,12 +171,17 @@ export class PrismaService
 
     if (typeof arg === 'function') {
       const fn = arg as (tx: Prisma.TransactionClient) => Promise<unknown>;
+      const given = (options ?? {}) as {
+        maxWait?: number;
+        timeout?: number;
+        isolationLevel?: Prisma.TransactionIsolationLevel;
+      };
       return super.$transaction(
         async (tx) => {
           if (tenantId) await tx.$executeRaw(SET_TENANT(tenantId));
           return fn(tx);
         },
-        options as { timeout?: number },
+        { ...INTERACTIVE_TX_DEFAULTS, ...given },
       );
     }
 
@@ -176,7 +211,13 @@ export class PrismaService
   async onModuleInit(): Promise<void> {
     // Serverless Postgres (e.g. Neon) suspends its compute when idle; the first
     // connection has to wake it, which can exceed the driver's connect timeout.
-    const maxAttempts = 5;
+    // Five tries two seconds apart gave up after ten seconds, which is not
+    // long enough: a suspended compute can take the better part of a minute to
+    // come back, and the API then exits on boot with P1001. The watcher does
+    // not restart after a failed boot, so the stack stays down until somebody
+    // notices. Backing off to about a minute covers the wake.
+    const maxAttempts = 8;
+    let delayMs = 1_000;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await this.$connect();
@@ -186,9 +227,10 @@ export class PrismaService
         if (attempt === maxAttempts) throw err;
         this.logger.warn(
           `Database connection attempt ${attempt}/${maxAttempts} failed ` +
-            `(${(err as Error).message}); retrying in 2s`,
+            `(${(err as Error).message}); retrying in ${delayMs / 1000}s`,
         );
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * 2, 15_000);
       }
     }
   }
