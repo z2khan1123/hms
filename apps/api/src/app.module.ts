@@ -18,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { AdmissionsModule } from './modules/admissions/admissions.module.js';
 import { AppointmentsModule } from './modules/appointments/appointments.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
 import { CasesModule } from './modules/cases/cases.module.js';
 import { ServicesModule } from './modules/services/services.module.js';
@@ -72,6 +73,7 @@ import { VocabularyModule } from './modules/vocabulary/vocabulary.module.js';
     AuditModule,
     HealthModule,
     AuthModule,
+    UsersModule,
     PatientsModule,
     PractitionersModule,
     AppointmentsModule,

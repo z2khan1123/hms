@@ -380,7 +380,12 @@ button:disabled:hover { background: var(--primary); border-color: var(--primary)
 .toolbar {
   display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;
 }
-.toolbar input { flex: 1; min-width: 200px; }
+/* Direct children only. `.toolbar input` also matched a checkbox nested inside
+   a label, which then grew to 200px and shoved its own text half a row away. */
+.toolbar > input { flex: 1; min-width: 200px; }
+/* Inputs are width:100% globally, which is right in a form column and wrong in
+   a row of filters — it makes each control claim the whole line and wrap. */
+.toolbar > select { width: auto; min-width: 150px; flex: 0 0 auto; }
 
 .alert {
   background: var(--danger-soft); color: var(--danger);
@@ -536,6 +541,40 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .option-selected { border-color: var(--primary); background: var(--info-bg); }
 .check-row { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 12px; }
 .check-row label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+
+/* --- users & roles ------------------------------------------------------- */
+.check {
+  display: inline-flex; gap: 7px; align-items: center;
+  font-size: 13.5px; color: var(--muted); white-space: nowrap;
+}
+.check input { width: auto; }
+
+/* Confirmation, as distinct from the red of a failure. An administrator who
+   has just reset somebody's password needs to be told it worked. */
+.notice {
+  background: var(--success-soft); color: var(--success);
+  border: 1px solid #c6e6d0; padding: 10px 13px;
+  border-radius: var(--radius-sm); margin-bottom: 14px; font-size: 13.5px;
+}
+
+/* A deactivated account stays legible — it is still a record — but stops
+   competing with the accounts that can actually sign in. */
+.is-dim td { opacity: 0.55; }
+
+.inline-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+
+.perm-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.perm {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted-2);
+  border: 1px solid var(--border);
+  /* Not held reads as absent rather than as struck through: a permission this
+     role does not have is simply not part of the job. */
+}
+.perm.is-held {
+  background: var(--primary-soft); color: var(--primary);
+  border-color: transparent; font-weight: 600;
+}
 
 /* key/value */
 .kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }

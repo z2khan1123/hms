@@ -6,6 +6,7 @@ import { HomePage } from './pages/HomePage';
 import { PortalApp } from './portal/PortalApp';
 import { PortalAdminPage } from './pages/PortalAdminPage';
 import { CustomFieldsPage } from './pages/CustomFieldsPage';
+import { UsersPage } from './pages/UsersPage';
 import { PatientsPage } from './pages/PatientsPage';
 import { PatientNewPage } from './pages/PatientNewPage';
 import { PatientEditPage } from './pages/PatientEditPage';
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="integration" element={<IntegrationPage />} />
         <Route path="patient-portal" element={<PortalAdminPage />} />
         <Route path="setup/custom-fields" element={<CustomFieldsPage />} />
+        <Route path="setup/users" element={<UsersPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/order/:orderId" element={<ReportEntryPage />} />
         <Route path="reports/:id" element={<ReportViewPage />} />

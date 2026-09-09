@@ -214,6 +214,14 @@ export const SECTIONS: readonly Section[] = [
   },
 
   {
+    path: '/setup/users',
+    label: 'Users & roles',
+    description: 'Staff accounts, and what each role can do',
+    icon: 'staff',
+    group: 'setup',
+    permission: 'user:read',
+  },
+  {
     path: '/setup/services',
     label: 'Services',
     description: 'What the hospital charges for',

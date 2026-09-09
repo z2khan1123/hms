@@ -28,3 +28,4 @@ export * from './integration.js';
 export * from './portal.js';
 export * from './customfields.js';
 export * from './offline.js';
+export * from './users.js';
