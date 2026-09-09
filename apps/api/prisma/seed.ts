@@ -179,9 +179,8 @@ async function seedUsers(tenantId: string): Promise<void> {
     'pharmacist',
     DEMO.staffPassword,
   );
-  // The platform operator, not hospital staff. It holds `tenant:manage` and
-  // `user:read` and nothing else — signing in as this role shows almost no
-  // clinical screens, which is correct rather than broken.
+  // The master account. It holds every permission there is, scoped to this
+  // tenant, so it is the one to sign in as when you want to see everything.
   await ensureUser(
     tenantId,
     'superadmin@demo-hospital.test',
@@ -388,8 +387,64 @@ async function seedIcd10(): Promise<void> {
         { code: 'I10', title: 'Essential (primary) hypertension' },
         { code: 'E78.5', title: 'Hyperlipidaemia, unspecified' },
         { code: 'K21.9', title: 'Gastro-oesophageal reflux disease without oesophagitis' },
+        { code: 'I25.1', title: 'Atherosclerotic heart disease of native coronary artery' },
+        { code: 'N18.9', title: 'Chronic kidney disease, unspecified' },
+        { code: 'D50.9', title: 'Iron deficiency anaemia, unspecified' },
+        { code: 'E05.9', title: 'Thyrotoxicosis, unspecified' },
+      ],
+    },
+    // The injury chapter. Without it a fracture had to be recorded as
+    // "Infectious gastroenteritis", which is what a doctor testing the system
+    // actually hit — a wrong diagnosis in a permanent record and on every
+    // report printed from it. A hospital with an X-ray machine needs these
+    // before it needs anything else here.
+    {
+      name: 'Fractures & Injuries',
+      codes: [
+        { code: 'S82.201', title: 'Fracture of shaft of right tibia' },
+        { code: 'S82.202', title: 'Fracture of shaft of left tibia' },
+        { code: 'S82.401', title: 'Fracture of shaft of right fibula' },
+        { code: 'S82.6', title: 'Fracture of lateral malleolus' },
+        { code: 'S52.501', title: 'Fracture of lower end of right radius' },
+        { code: 'S52.502', title: 'Fracture of lower end of left radius' },
+        { code: 'S42.001', title: 'Fracture of right clavicle' },
+        { code: 'S72.001', title: 'Fracture of neck of right femur' },
+        { code: 'S72.002', title: 'Fracture of neck of left femur' },
+        { code: 'S62.10', title: 'Fracture of carpal bone, unspecified' },
+        { code: 'S22.3', title: 'Fracture of one rib' },
+        { code: 'S06.0', title: 'Concussion' },
+        { code: 'S93.4', title: 'Sprain of ankle' },
+        { code: 'S61.9', title: 'Open wound of wrist and hand, unspecified' },
+        { code: 'T14.8', title: 'Other injury of unspecified body region' },
+        { code: 'T30.0', title: 'Burn of unspecified body region, unspecified degree' },
+        { code: 'W57', title: 'Bitten or stung by non-venomous insect or arthropod' },
+        { code: 'W54', title: 'Bitten or struck by dog' },
+      ],
+    },
+    {
+      name: 'Maternal & Child Health',
+      codes: [
+        { code: 'Z34.9', title: 'Supervision of normal pregnancy, unspecified' },
+        { code: 'O80', title: 'Encounter for full-term uncomplicated delivery' },
+        { code: 'O82', title: 'Encounter for caesarean delivery without indication' },
+        { code: 'P07.3', title: 'Preterm newborn' },
+        { code: 'E44.0', title: 'Moderate protein-energy malnutrition' },
+        { code: 'A90', title: 'Dengue fever' },
+        { code: 'B50.9', title: 'Plasmodium falciparum malaria, unspecified' },
+        { code: 'A01.0', title: 'Typhoid fever' },
+      ],
+    },
+    {
+      name: 'Symptoms & General',
+      codes: [
         { code: 'M54.5', title: 'Low back pain' },
         { code: 'R51', title: 'Headache' },
+        { code: 'R50.9', title: 'Fever, unspecified' },
+        { code: 'R10.4', title: 'Abdominal pain, unspecified' },
+        { code: 'R05', title: 'Cough' },
+        { code: 'R11.0', title: 'Nausea' },
+        { code: 'R42', title: 'Dizziness and giddiness' },
+        { code: 'Z00.0', title: 'General adult medical examination' },
       ],
     },
   ];
