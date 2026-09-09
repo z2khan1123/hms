@@ -272,7 +272,7 @@ export class OpdService {
         where: {
           tenantId,
           opdVisitId: { in: visitIds },
-          status: { in: ['ordered', 'in_progress'] },
+          status: { in: ['ordered', 'sample_collected', 'in_progress'] },
         },
         _count: { _all: true },
       }),
@@ -287,8 +287,14 @@ export class OpdService {
       if (!r.opdVisitId) continue;
       if (r.status === 'ordered') {
         orderedByVisit.set(r.opdVisitId, r._count._all);
-      } else if (r.status === 'in_progress') {
-        inProgressByVisit.set(r.opdVisitId, r._count._all);
+      } else {
+        // sample_collected and in_progress are both "the department has it".
+        // Lumping them together is what stops a drawn-but-unprocessed sample
+        // reading as a finished visit.
+        inProgressByVisit.set(
+          r.opdVisitId,
+          (inProgressByVisit.get(r.opdVisitId) ?? 0) + r._count._all,
+        );
       }
     }
 

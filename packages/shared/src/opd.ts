@@ -57,6 +57,12 @@ export interface VisitStageInput {
   /** Bill lines on this case still awaiting payment or approval. */
   unpaidItemCount: number;
   orderedCount: number;
+  /**
+   * Orders the department has started — which includes a specimen already
+   * taken. A blood sample sitting in the lab is work in progress, and counting
+   * it as neither ordered nor in progress made the visit read as Completed
+   * while the patient was still waiting for a result.
+   */
   inProgressCount: number;
 }
 

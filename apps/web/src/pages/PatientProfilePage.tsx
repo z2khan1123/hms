@@ -50,6 +50,29 @@ export function PatientProfilePage() {
     enabled: Boolean(id) && tab === 'cases',
   });
 
+  /**
+   * The visit this patient is currently here for, if any.
+   *
+   * Runs regardless of which tab is open, because it decides the main action in
+   * the header. Without it a doctor opening a patient had nothing to click:
+   * `Register visit` belongs to the front desk and `Edit` belongs to records,
+   * so the clinician's own screen offered him no way to start seeing anybody.
+   */
+  const openVisit = useQuery({
+    queryKey: ['opd', 'open', 'patient', id],
+    queryFn: async () => {
+      const { data } = await api.get<OpdVisitListItem[]>('/opd', {
+        params: { scope: 'all', patientId: id },
+      });
+      return (
+        data.find(
+          (v) => v.status !== 'completed' && v.status !== 'cancelled',
+        ) ?? null
+      );
+    },
+    enabled: Boolean(id) && can('opd:read'),
+  });
+
   const visits = useQuery({
     queryKey: ['opd', 'list', 'all', 'patient', id],
     queryFn: async () => {
@@ -75,9 +98,22 @@ export function PatientProfilePage() {
         linkToProfile={false}
         actions={
           <>
+            {/* The clinician's way in. Ranked first because for a doctor with
+                the patient in front of him it is the only thing on this page
+                he actually wants. */}
+            {openVisit.data && can('opd:read') && (
+              <Link to={`/opd/${openVisit.data.id}`}>
+                <button type="button">Open consultation</button>
+              </Link>
+            )}
             {can('opd:create') && (
               <Link to={`/opd/new?patientId=${p.id}`}>
-                <button type="button">Register visit</button>
+                <button
+                  type="button"
+                  className={openVisit.data ? 'secondary' : undefined}
+                >
+                  Register visit
+                </button>
               </Link>
             )}
             {can('patient:update') && (
@@ -90,6 +126,19 @@ export function PatientProfilePage() {
           </>
         }
       />
+
+      {/* A clinician who cannot register a visit and has none open would
+          otherwise be looking at a page with no action on it at all, with
+          nothing saying why. */}
+      {can('opd:read') &&
+        !can('opd:create') &&
+        openVisit.isFetched &&
+        !openVisit.data && (
+          <p className="notice" style={{ marginTop: 12 }}>
+            No open visit for this patient. The front desk registers the visit;
+            it will appear in your queue once they do.
+          </p>
+        )}
 
       <div style={{ marginTop: 16 }}>
         <Tabs tabs={TABS} value={tab} onChange={setTab} ariaLabel="Patient sections" />
