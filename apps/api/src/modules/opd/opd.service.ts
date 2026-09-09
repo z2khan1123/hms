@@ -17,6 +17,7 @@ import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { parseIsoDateOrNull } from '../../common/util/dates.js';
 import { zonedDayRange } from '../../common/util/time-zone.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { startConsultationIfWaiting } from './start-consultation.js';
 import { BillingService } from '../billing/billing.service.js';
 import { CasesService } from '../cases/cases.service.js';
 import {
@@ -359,6 +360,18 @@ export class OpdService {
         await tx.visitDiagnosis.deleteMany({ where: { opdVisitId: id } });
         await this.replaceDiagnoses(tx, tenantId, id, input.diagnoses);
       }
+
+      // Recording any of this means the doctor has the patient in front of
+      // him. Reassigning the visit to a different practitioner does not — that
+      // is the desk correcting the booking, not a consultation starting.
+      const isClinical =
+        input.note !== undefined ||
+        input.previousMedicalIssue !== undefined ||
+        input.knownAllergies !== undefined ||
+        input.symptoms !== undefined ||
+        input.findings !== undefined ||
+        input.diagnoses !== undefined;
+      if (isClinical) await startConsultationIfWaiting(tx, tenantId, id);
     });
 
     return this.get(tenantId, id);

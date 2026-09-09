@@ -13,6 +13,7 @@ import {
   type ServiceOrderStatus,
 } from '@hms/shared';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { startConsultationIfWaiting } from '../opd/start-consultation.js';
 import { BillingService } from '../billing/billing.service.js';
 import { CasesService } from '../cases/cases.service.js';
 import { findOrCreateReportInTx } from '../diagnostics/report-provisioning.js';
@@ -126,6 +127,9 @@ export class OrdersService {
         });
         ids.push(created.id);
       }
+
+      // Sending the patient for a test is clinical work: the doctor has him.
+      await startConsultationIfWaiting(tx, tenantId, visit.id);
       return ids;
     });
 

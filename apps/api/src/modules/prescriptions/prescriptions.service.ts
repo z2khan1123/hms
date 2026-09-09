@@ -8,6 +8,7 @@ import type {
   SetPrescriptionInput,
 } from '@hms/shared';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { startConsultationIfWaiting } from '../opd/start-consultation.js';
 import {
   prescriptionItemInclude,
   toPrescriptionItemDto,
@@ -79,6 +80,10 @@ export class PrescriptionsService {
           })),
         });
       }
+
+      // Writing a prescription is the doctor consulting, whether or not he has
+      // typed anything else yet.
+      await startConsultationIfWaiting(tx, tenantId, opdVisitId);
     });
 
     return this.list(tenantId, opdVisitId);
