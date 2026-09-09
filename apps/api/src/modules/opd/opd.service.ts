@@ -14,7 +14,6 @@ import type {
   UpdateOpdVisitInput,
 } from '@hms/shared';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
-import { parseIsoDateOrNull } from '../../common/util/dates.js';
 import { zonedDayRange } from '../../common/util/time-zone.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { startConsultationIfWaiting } from './start-consultation.js';
@@ -518,7 +517,3 @@ function scopeFilter(
   if (scope === 'upcoming') return { visitAt: { gte: end } };
   return { visitAt: { lt: start } };
 }
-
-// Kept alongside the service so a caller can normalise a cheque date the same
-// way registration does.
-export const parseChequeDate = parseIsoDateOrNull;
