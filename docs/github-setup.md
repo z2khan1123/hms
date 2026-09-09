@@ -6,9 +6,20 @@ to it. They have to be run by the owner, because the one interactive step —
 authentication — opens a browser and needs a human at the keyboard.
 
 The GitHub CLI (`gh`) is already installed, version 2.100.0, at
-`C:\Program Files\GitHub CLI\gh.exe`. A PowerShell window that was already open
-before the install will not have it on `PATH`; open a new one so the commands
-below resolve.
+`C:\Program Files\GitHub CLI\gh.exe`, and it is on the machine `PATH`.
+
+A shell that was already open before the install still carries the old `PATH`
+and will answer `The term 'gh' is not recognized`. That is not a broken install
+and reinstalling will not fix it — a process inherits its environment when it
+starts and does not notice later changes. Either open a new terminal, or teach
+the one you have:
+
+```bash
+$env:Path += ";C:\Program Files\GitHub CLI"
+```
+
+That lasts for the life of that shell, which is long enough for everything
+below.
 
 ## 1. Authenticate
 
@@ -33,10 +44,11 @@ It should report that you are logged in to github.com as your account.
 
 ## 2. Create the repository and push
 
-Run this from the repository root, `D:\HMS`:
+`--source=.` means "this directory", so the working directory matters. Run it
+from the repository root — the `cd` is part of the command for that reason:
 
 ```bash
-gh repo create hms --private --source=. --remote=origin --push
+cd D:\HMS; gh repo create hms --private --source=. --remote=origin --push
 ```
 
 `--source=.` uses this existing local repo instead of creating an empty one,
