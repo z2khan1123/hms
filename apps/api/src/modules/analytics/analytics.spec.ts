@@ -7,6 +7,7 @@ import {
 } from '@hms/shared';
 import { buildQuery } from './analytics.builder.js';
 import { DATASETS, findDataset, toDatasetDto } from './analytics.registry.js';
+import { AnalyticsService } from './analytics.service.js';
 
 const TENANT = '11111111-1111-1111-1111-111111111111';
 
@@ -235,5 +236,57 @@ describe('CSV export', () => {
       elapsedMs: 1,
     });
     expect(csv).toBe('Department\r\n');
+  });
+});
+
+/**
+ * Every dataset is gated on its own read permission, and that check must read
+ * the caller's authority the same way the guard does.
+ *
+ * An API key is stored with `role: 'read_only'` as an audit-trail label, not as
+ * authority. Asking `roleHasPermission(user.role, …)` here therefore answered
+ * for `read_only` — a role that holds `finance:read`, `payment:read`,
+ * `staff:read` and most of the rest — so a key issued the single scope
+ * `analytics:read` could pull the revenue and payments datasets it was never
+ * granted. `callerHasPermission` judges a key on its scopes alone.
+ */
+describe('a dataset is gated on the caller, not on a role label', () => {
+  const service = new AnalyticsService(undefined as never);
+
+  const key = {
+    id: 'k1',
+    email: 'apikey:hms_abcd1234',
+    role: 'read_only' as const,
+    tenantId: TENANT,
+    scopes: ['analytics:read', 'patient:read'] as const,
+    apiKeyId: 'k1',
+  };
+
+  it('offers a key only the datasets its scopes reach', () => {
+    const ids = service.listDatasets(key).map((d) => d.id);
+    expect(ids).toContain('patients');
+    // `read_only` holds all of these; this key holds none of them.
+    expect(ids).not.toContain('payments');
+    expect(ids).not.toContain('income');
+    expect(ids).not.toContain('staff');
+  });
+
+  it('refuses a hand-crafted query for a dataset the key was not scoped', async () => {
+    // Rejected before any database work, so no client is needed to prove it.
+    await expect(
+      service.run(TENANT, key, q({ dataset: 'payments' })),
+    ).rejects.toThrow(/do not have access/);
+  });
+
+  it('still judges a signed-in person by their role', () => {
+    const receptionist = {
+      id: 'u1',
+      email: 'front@example.test',
+      role: 'receptionist' as const,
+      tenantId: TENANT,
+    };
+    const ids = service.listDatasets(receptionist).map((d) => d.id);
+    expect(ids).toContain('patients');
+    expect(ids).not.toContain('payslips');
   });
 });
