@@ -13,10 +13,10 @@ import {
   type Permission,
   type SavedView,
   type UpdateSavedViewInput,
-  roleHasPermission,
   validateQuery,
 } from '@hms/shared';
 import type { AuthUser } from '../../common/auth/auth-user.js';
+import { callerHasPermission } from '../../common/auth/granted.js';
 import { compareNatural } from '../../common/util/natural-sort.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { buildQuery } from './analytics.builder.js';
@@ -35,8 +35,14 @@ import { DATASETS, findDataset, toDatasetDto } from './analytics.registry.js';
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * `callerHasPermission`, never `roleHasPermission` — an API key carries a
+   * placeholder role (`read_only`) purely for the audit trail, so judging it by
+   * that role hands every dataset in the read-only set to a key that was scoped
+   * to one of them.
+   */
   private can(user: AuthUser, permission: Permission): boolean {
-    return roleHasPermission(user.role, permission);
+    return callerHasPermission(user, permission);
   }
 
   /** Only the datasets this user may actually read. */
