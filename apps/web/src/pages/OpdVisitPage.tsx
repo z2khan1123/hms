@@ -37,7 +37,6 @@ import {
   type Service,
   type ServiceOrder,
   type UpdateOpdVisitInput,
-  type UpdatePatientInput,
   type VitalReading,
   type VitalType,
 } from '@hms/shared';
@@ -107,8 +106,12 @@ export function OpdVisitPage() {
 
   const saveAllergyToRecord = useMutation({
     mutationFn: async (value: string) => {
-      const payload: UpdatePatientInput = { knownAllergies: value };
-      const { data } = await api.patch<Patient>(`/patients/${patientId}`, payload);
+      // Its own endpoint, guarded on `allergy:write`. Recording an allergy is
+      // clinical work; it must not require the right to edit demographics.
+      const { data } = await api.patch<Patient>(
+        `/patients/${patientId}/known-allergies`,
+        { knownAllergies: value },
+      );
       return data;
     },
     onSuccess: async () => {
@@ -237,7 +240,9 @@ export function OpdVisitPage() {
   const canPrescribe = can('prescription:write') && canEdit;
   const canOrder = can('order:create') && v.status !== 'cancelled' && v.status !== 'completed';
   const allergyText = v.knownAllergies?.trim() || v.patient.knownAllergies?.trim() || '';
-  const canUpdatePatient = can('patient:update');
+  // Writing the allergy to the permanent record is gated on the clinical
+  // permission, so a doctor keeps it while losing the right to rename people.
+  const canWriteAllergy = can('allergy:write');
   const history = historyAlert.data;
 
   return (
@@ -474,7 +479,7 @@ export function OpdVisitPage() {
                 <span className="hint">
                   Saved to this visit when you save the consultation.
                 </span>
-                {canEdit && canUpdatePatient && (
+                {canEdit && canWriteAllergy && (
                   <>
                     <div className="row no-print" style={{ marginTop: 6 }}>
                       <button

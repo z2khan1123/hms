@@ -228,6 +228,28 @@ export class PatientsService {
     };
   }
 
+  /**
+   * Write the free-text allergy note onto the patient's permanent record.
+   *
+   * Separate from `update` because it is a different act by a different person.
+   * Demographics belong to the front desk; an allergy is a clinical finding,
+   * and it is the doctor who has just heard it who must be able to record it.
+   * Sharing one endpoint meant a doctor needed `patient:update`, which also let
+   * him rename the patient — so the safety feature was buying the wrong rights.
+   */
+  async setKnownAllergies(
+    tenantId: string,
+    id: string,
+    knownAllergies: string | null,
+  ): Promise<PatientDto> {
+    await this.get(tenantId, id);
+    const patient = await this.prisma.patient.update({
+      where: { id },
+      data: { knownAllergies },
+    });
+    return toPatientDto(patient);
+  }
+
   async update(
     tenantId: string,
     id: string,

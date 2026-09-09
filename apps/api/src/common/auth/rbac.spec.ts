@@ -187,3 +187,30 @@ describe('RBAC matrix', () => {
     }
   });
 });
+
+describe('who may edit a patient record', () => {
+  it('keeps demographics with the front desk, not the doctor', () => {
+    // A doctor renaming a patient mid-episode is a records problem, not a
+    // clinical one. Registration and correction belong to the desk.
+    expect(ROLE_PERMISSIONS.doctor.includes('patient:update')).toBe(false);
+    expect(ROLE_PERMISSIONS.nurse.includes('patient:update')).toBe(false);
+    expect(ROLE_PERMISSIONS.receptionist.includes('patient:update')).toBe(true);
+  });
+
+  it('still lets the doctor record an allergy', () => {
+    // The safety feature must survive the restriction above: the allergy note
+    // has its own endpoint guarded on allergy:write precisely so that removing
+    // patient:update from the doctor does not silently disable it.
+    expect(ROLE_PERMISSIONS.doctor.includes('allergy:write')).toBe(true);
+    expect(ROLE_PERMISSIONS.doctor.includes('allergy:read')).toBe(true);
+  });
+
+  it('lets the doctor order tests and imaging', () => {
+    // Sending a patient for an X-ray, ultrasound or lab test is the doctor's
+    // job and nobody else's to initiate.
+    for (const p of ['order:create', 'order:read', 'order:cancel'] as const) {
+      expect(ROLE_PERMISSIONS.doctor.includes(p), `doctor needs ${p}`).toBe(true);
+    }
+    expect(ROLE_PERMISSIONS.receptionist.includes('order:create')).toBe(false);
+  });
+});

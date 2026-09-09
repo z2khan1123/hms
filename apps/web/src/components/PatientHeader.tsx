@@ -11,6 +11,8 @@ export interface HeaderPatient {
   gender: Gender;
   birthDate: string;
   phone: string;
+  /** Father's or guardian's name. */
+  guardianName?: string | null;
   knownAllergies: string | null;
 }
 
@@ -48,6 +50,14 @@ export function PatientHeader({
             <span>
               MRN <strong>{patient.mrn}</strong>
             </span>
+            {/* In Pakistan the father's name is how you tell two patients of
+                the same name apart, so it sits with the identifiers rather
+                than buried in the demographics further down. */}
+            {patient.guardianName && (
+              <span>
+                S/D/O <strong>{patient.guardianName}</strong>
+              </span>
+            )}
             <span>
               Age <strong>{formatAge(patient.birthDate)}</strong>
             </span>

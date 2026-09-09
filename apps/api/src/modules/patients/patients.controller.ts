@@ -19,6 +19,8 @@ import {
   patientSearchQuerySchema,
   type UpdatePatientInput,
   updatePatientSchema,
+  type SetKnownAllergiesInput,
+  setKnownAllergiesSchema,
 } from '@hms/shared';
 import { Audit } from '../../common/audit/audit.decorator.js';
 import type { AuthUser } from '../../common/auth/auth-user.js';
@@ -106,6 +108,28 @@ export class PatientsController {
     @Param('allergyId', ParseUUIDPipe) allergyId: string,
   ) {
     await this.patients.removeAllergy(requireTenant(user), id, allergyId);
+  }
+
+  /**
+   * The allergy note, written by whoever is treating the patient.
+   *
+   * Guarded on `allergy:write` rather than `patient:update`: a doctor must be
+   * able to record an allergy without also being able to edit demographics.
+   */
+  @Patch(':id/known-allergies')
+  @Permissions('allergy:write')
+  @Audit('patient.known-allergies')
+  setKnownAllergies(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(setKnownAllergiesSchema))
+    dto: SetKnownAllergiesInput,
+  ) {
+    return this.patients.setKnownAllergies(
+      requireTenant(user),
+      id,
+      dto.knownAllergies,
+    );
   }
 
   @Patch(':id')

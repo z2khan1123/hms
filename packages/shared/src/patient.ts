@@ -63,6 +63,17 @@ export const updatePatientSchema = createPatientSchema.partial().extend({
 });
 export type UpdatePatientInput = z.infer<typeof updatePatientSchema>;
 
+/**
+ * The allergy note on its own.
+ *
+ * A doctor recording an allergy is doing something clinical, and must not need
+ * the right to rename the patient in order to do it.
+ */
+export const setKnownAllergiesSchema = z.object({
+  knownAllergies: z.string().trim().max(2000).nullable(),
+});
+export type SetKnownAllergiesInput = z.infer<typeof setKnownAllergiesSchema>;
+
 export const patientSchema = z.object({
   id: z.string().uuid(),
   mrn: z.string(),
@@ -100,6 +111,8 @@ export const patientSummarySchema = z.object({
   gender: genderSchema,
   birthDate: isoDateSchema,
   phone: z.string(),
+  /** Father's or guardian's name — an identifier here, not a demographic. */
+  guardianName: z.string().nullable(),
   knownAllergies: z.string().nullable(),
 });
 export type PatientSummary = z.infer<typeof patientSummarySchema>;

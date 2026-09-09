@@ -312,7 +312,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'death:read',
     'death:manage',
     'patient:read',
-    'patient:update',
+    // Deliberately NOT patient:update. Demographics belong to the front desk;
+    // a doctor who could edit them could rename a patient mid-episode. The one
+    // clinical field he must be able to write — the allergy note — has its own
+    // endpoint guarded on allergy:write.
     'case:read',
     'case:update',
     'case:close',

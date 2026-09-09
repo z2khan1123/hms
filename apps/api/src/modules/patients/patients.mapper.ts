@@ -70,6 +70,7 @@ export const patientSummarySelect = {
   gender: true,
   birthDate: true,
   phone: true,
+  guardianName: true,
   knownAllergies: true,
 } as const;
 
@@ -86,6 +87,7 @@ export function toPatientSummary(p: PatientSummaryRow): PatientSummary {
     gender: p.gender,
     birthDate: toIsoDate(p.birthDate),
     phone: p.phone,
+    guardianName: p.guardianName,
     knownAllergies: p.knownAllergies,
   };
 }
