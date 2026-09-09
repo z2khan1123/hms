@@ -58,10 +58,27 @@ async function isTaken(port) {
   return v4 || v6;
 }
 
-const PORTS = [
-  { port: apiPort(), name: 'API' },
-  { port: 5173, name: 'web' },
+/**
+ * Which ports to check.
+ *
+ * The root `dev` script starts both servers and wants both checked. The API's
+ * own `start:dev` starts one, and must not refuse to run just because the web
+ * server is legitimately up — so it passes `api` and is judged on its own port
+ * alone.
+ */
+const SCOPE = process.argv[2];
+const ALL = [
+  { port: apiPort(), name: 'API', scope: 'api' },
+  { port: 5173, name: 'web', scope: 'web' },
 ];
+const PORTS = SCOPE ? ALL.filter((p) => p.scope === SCOPE) : ALL;
+
+if (PORTS.length === 0) {
+  process.stderr.write(
+    `\nUnknown scope "${SCOPE}". Use "api", "web", or omit it for both.\n\n`,
+  );
+  process.exit(2);
+}
 
 const taken = [];
 for (const p of PORTS) {
@@ -85,11 +102,12 @@ if (taken.length > 0) {
 
   process.stderr.write(
     `\nThe dev stack is already running: ${list}.\n\n` +
-      `Starting a second one does not work. The API would lose the race for its\n` +
-      `port, restart, and lose it again, and sign-in would fail with a 502.\n\n` +
+      `Starting a second one does not work: the new process loses the race for\n` +
+      `the port and exits, the watcher restarts it into the same collision, and\n` +
+      `while that loops the app answers sign-in with a 502.\n\n` +
       `If you want the running one, just use it: http://localhost:5173\n\n` +
       `To see what is holding the port:\n  ${inspect}\n\n` +
-      `To stop it and start fresh:\n  ${clear}\n  npm run dev\n\n`,
+      `To stop it and start fresh:\n  ${clear}\n  ${SCOPE === 'api' ? 'npm run start:dev' : 'npm run dev'}\n\n`,
   );
   process.exit(1);
 }

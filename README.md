@@ -88,6 +88,12 @@ sign-in fails with `Request failed with status code 502` — which looks like an
 auth bug and is not one. `npm run dev` checks the ports first and stops with an
 explanation rather than starting into that state.
 
+`npm run start:dev` inside `apps/api` is guarded the same way, and on its own
+port only — so it still runs happily while the web server is up. That gap is
+worth naming because it is the one people fall into: the root script was
+guarded first, and starting the API directly from its own folder walked
+straight past the check.
+
 If you hit the 502, look for duplicate watchers before looking at the code:
 
 ```powershell
