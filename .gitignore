@@ -47,3 +47,7 @@ Thumbs.db
 
 # prisma
 apps/api/prisma/*.db
+
+# Temporary git worktrees used by background agents. They are working copies of
+# this same repo — committing one would nest the repository inside itself.
+.claude/worktrees/
